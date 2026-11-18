@@ -14,6 +14,8 @@ import { uploadImage, deleteBukti } from '../../lib/upload';
 import { BuktiField } from '../../components/Bukti';
 import LaporanKas from '../../components/LaporanKas';
 import { DEFAULT_TAMPILAN, TAMPILAN_GROUPS, applyTheme, mergeTampilan } from '../../lib/tampilan';
+import { clearCache } from '../../lib/hemat';
+import { isCloudinaryOn } from '../../lib/cdn';
 
 const KATEGORI = ['Masjid', 'Pendidikan', 'Sosial'];
 const DIVISI = ['Pembina', 'Pengawas', 'Pengurus Harian', 'Unit'];
@@ -181,6 +183,7 @@ function ProfileTab() {
     setBusy(true);
     try {
       await setDoc(doc(getDb(), 'settings', 'profile'), form, { merge: true });
+      clearCache();
       setMsg('Tersimpan ✓');
     } catch (err) { setMsg('Gagal: ' + err.message); }
     setBusy(false);
@@ -219,6 +222,7 @@ function TampilanTab() {
     try {
       await setDoc(doc(getDb(), 'settings', 'tampilan'), form, { merge: true });
       applyTheme(form);
+      clearCache();
       setMsg('Tersimpan ✓ — buka beranda untuk melihat hasilnya');
     } catch (err) { setMsg('Gagal: ' + err.message); }
     setBusy(false);
@@ -235,7 +239,11 @@ function TampilanTab() {
     <form onSubmit={save} className="space-y-6">
       <p className="rounded-xl bg-brand-50 p-4 text-sm text-brand-900">
         Warna dan font langsung berubah di halaman ini sebagai pratinjau. Tekan <b>Simpan Tampilan</b> agar berlaku di beranda.
+        Pengunjung melihat perubahan paling lambat 10 menit kemudian (cache).
       </p>
+      {isCloudinaryOn()
+        ? <p className="rounded-xl bg-emerald-50 p-4 text-sm text-emerald-900">✓ Cloudinary aktif: foto yang diunggah disimpan di Cloudinary dan tidak memakai kuota Firestore.</p>
+        : <p className="rounded-xl bg-amber-50 p-4 text-sm text-amber-900">⚠ Cloudinary belum aktif: foto yang diunggah akan disimpan di Firestore dan memakan kuota Spark. Isi <code>NEXT_PUBLIC_CLOUDINARY_CLOUD_NAME</code> dan <code>NEXT_PUBLIC_CLOUDINARY_UPLOAD_PRESET</code> di Vercel lalu Redeploy, atau tempel URL foto di kolom “URL foto”.</p>}
       {TAMPILAN_GROUPS.map((g) => (
         <section key={g.id} className="space-y-4 rounded-2xl bg-white p-6 shadow-sm">
           <h3 className="font-bold text-brand-800">{g.title}</h3>
@@ -289,6 +297,7 @@ function CrudTab({ col, fields, sort, renderItem, numberFields = [], onItems }) 
           if (old?.[f.name] && old[f.name] !== data[f.name]) await deleteBukti(old[f.name]);
         }
       } else await addDoc(collection(getDb(), col), { ...data, createdAt: serverTimestamp() });
+      clearCache();
       setMsg('Tersimpan ✓');
       reset();
       await load();
@@ -302,6 +311,7 @@ function CrudTab({ col, fields, sort, renderItem, numberFields = [], onItems }) 
       const old = items.find((x) => x.id === id);
       await deleteDoc(doc(getDb(), col, id));
       for (const f of fields.filter((x) => x.type === 'bukti')) await deleteBukti(old?.[f.name]);
+      clearCache();
       await load();
     } catch (err) { setMsg('Gagal: ' + err.message); }
   };

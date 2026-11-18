@@ -27,3 +27,9 @@ Gambar (logo/foto) otomatis dikompres ke maks. 320px dan disimpan di Firestore.
 - **Media sosial**: Instagram, Facebook, YouTube, TikTok, X, Telegram, WhatsApp, website, plus tautan tambahan (`Nama|URL`). Tampil di footer dan (opsional) di hero.
 - Disimpan di Firestore `settings/tampilan` (rules tidak perlu diubah).
 - Menambah opsi baru: lihat komentar di atas `lib/tampilan.js` (default → skema field → pakai di `app/page.js`).
+
+## Hemat kuota Firestore (Spark) & Cloudinary
+- Isi `NEXT_PUBLIC_CLOUDINARY_CLOUD_NAME` dan `NEXT_PUBLIC_CLOUDINARY_UPLOAD_PRESET` (unsigned preset) di Vercel → **Redeploy** (variabel `NEXT_PUBLIC_*` ikut dibangun saat build). Setelah itu semua foto baru (latar, galeri, berita, pengurus) masuk ke Cloudinary, bukan Firestore.
+- Foto Cloudinary ditampilkan otomatis dalam ukuran/format ringan (`f_auto,q_auto,w_…`). Foto besar diperkecil dulu di HP sebelum diunggah.
+- Data beranda di-cache 10 menit di browser pengunjung. Transaksi, berita, kegiatan, dan galeri baru dibaca saat bagiannya mendekati layar.
+- Foto lama yang sudah tersimpan di Firestore tetap di sana sampai diunggah ulang. Foto latar juga bisa berupa URL atau file di folder `public/` (mis. `/latar.jpg`).

@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import Image from 'next/image';
 import Link from 'next/link';
 import { collection, doc, getDoc, getDocs } from 'firebase/firestore';
@@ -12,7 +12,9 @@ import { getDb } from '../lib/firebase';
 import LaporanKas from '../components/LaporanKas';
 import Konten from '../components/Konten';
 import SocialIcons from '../components/SocialIcons';
-import { DEFAULT_TAMPILAN, HERO_PAD, applyTheme, heroPhotoStyle, isYa, mergeTampilan, socialLinks } from '../lib/tampilan';
+import { DEFAULT_TAMPILAN, HERO_PAD, applyTheme, heroPhotoStyle, heroSrc, isYa, mergeTampilan, socialLinks } from '../lib/tampilan';
+import { optimizeUrl } from '../lib/cdn';
+import { CACHE_TTL, cached, useInView } from '../lib/hemat';
 
 const DEFAULT_PROFILE = {
   namaYayasan: 'Yayasan Kita Bersama',
@@ -48,6 +50,8 @@ export default function HomePage() {
   const [institutions, setInstitutions] = useState([]);
   const [members, setMembers] = useState([]);
   const [trx, setTrx] = useState([]);
+  const [trxLoaded, setTrxLoaded] = useState(false);
+  const keuRef = useRef(null);
   const [filter, setFilter] = useState('Semua');
   const [open, setOpen] = useState(false);
 
@@ -55,28 +59,50 @@ export default function HomePage() {
     let alive = true;
     (async () => {
       try {
-        const db = getDb();
-        const [p, tp, i, m, t] = await Promise.all([
-          getDoc(doc(db, 'settings', 'profile')),
-          getDoc(doc(db, 'settings', 'tampilan')),
-          getDocs(collection(db, 'institutions')),
-          getDocs(collection(db, 'board_members')),
-          getDocs(collection(db, 'transactions')),
-        ]);
+        // Data beranda di-cache 10 menit di browser pengunjung (hemat baca Firestore)
+        const d = await cached('home-v1', CACHE_TTL, async () => {
+          const db = getDb();
+          const [p, tp, i, m] = await Promise.all([
+            getDoc(doc(db, 'settings', 'profile')),
+            getDoc(doc(db, 'settings', 'tampilan')),
+            getDocs(collection(db, 'institutions')),
+            getDocs(collection(db, 'board_members')),
+          ]);
+          return {
+            profile: p.exists() ? p.data() : null,
+            tampilan: tp.exists() ? tp.data() : null,
+            institutions: i.docs.map((x) => ({ id: x.id, ...x.data() })),
+            members: m.docs.map((x) => ({ id: x.id, ...x.data() })).sort((x, y) => (x.urutan || 0) - (y.urutan || 0)),
+          };
+        });
         if (!alive) return;
-        if (p.exists()) setProfile({ ...DEFAULT_PROFILE, ...p.data() });
-        const cfg = mergeTampilan(tp.exists() ? tp.data() : null);
+        if (d.profile) setProfile({ ...DEFAULT_PROFILE, ...d.profile });
+        const cfg = mergeTampilan(d.tampilan);
         setTpl(cfg);
         applyTheme(cfg);
-        setInstitutions(i.docs.map((d) => ({ id: d.id, ...d.data() })));
-        setMembers(m.docs.map((d) => ({ id: d.id, ...d.data() })).sort((a, b) => (a.urutan || 0) - (b.urutan || 0)));
-        setTrx(t.docs.map((d) => ({ id: d.id, ...d.data() })));
+        setInstitutions(d.institutions);
+        setMembers(d.members);
       } catch (err) {
         console.error('Gagal memuat data:', err);
       }
     })();
     return () => { alive = false; };
   }, []);
+
+  // Transaksi baru dibaca saat bagian Keuangan mendekati layar (pengunjung yang tidak scroll ke sana tidak memakai kuota baca)
+  const keuNear = useInView(keuRef, isYa(tpl.tampilKeuangan));
+  useEffect(() => {
+    if (!keuNear) return undefined;
+    let alive = true;
+    cached('trx-v1', CACHE_TTL, async () => {
+      const t = await getDocs(collection(getDb(), 'transactions'));
+      return t.docs.map((x) => ({ id: x.id, ...x.data() }));
+    })
+      .then((rows) => { if (alive) setTrx(rows); })
+      .catch((err) => console.error('Gagal memuat transaksi:', err))
+      .finally(() => { if (alive) setTrxLoaded(true); });
+    return () => { alive = false; };
+  }, [keuNear]);
 
   const saldo = useMemo(() => {
     const s = Object.fromEntries(UNITS.map((u) => [u, { masuk: 0, keluar: 0 }]));
@@ -120,7 +146,7 @@ export default function HomePage() {
       </header>
 
       <section className={`relative isolate overflow-hidden bg-gradient-to-br from-brand-900 via-brand-800 to-brand-600 px-4 text-white ${HERO_PAD[tpl.heroTinggi] || HERO_PAD.sedang} ${left ? 'text-left' : 'text-center'}`}>
-        {tpl.heroFoto && (
+        {heroSrc(tpl) && (
           <>
             {/* Foto latar: tepinya memudar ke warna utama di belakangnya */}
             <div aria-hidden className="absolute inset-0 -z-10" style={heroPhotoStyle(tpl)} />
@@ -201,7 +227,7 @@ export default function HomePage() {
                 {list.map((m) => (
                   <div key={m.id} className="w-40 text-center">
                     <div className="mx-auto mb-2 h-24 w-24 overflow-hidden rounded-full bg-slate-200">
-                      {m.fotoUrl ? <Image src={m.fotoUrl} alt={m.nama || 'Pengurus'} width={96} height={96} unoptimized className="h-24 w-24 object-cover" /> : <Users className="m-6 text-slate-400" size={48} />}
+                      {m.fotoUrl ? <Image src={optimizeUrl(m.fotoUrl, 200)} alt={m.nama || 'Pengurus'} width={96} height={96} unoptimized className="h-24 w-24 object-cover" /> : <Users className="m-6 text-slate-400" size={48} />}
                     </div>
                     <p className="font-semibold">{m.nama}</p>
                     <p className="text-xs text-slate-500">{m.jabatan}</p>
@@ -215,7 +241,7 @@ export default function HomePage() {
       )}
 
       {isYa(tpl.tampilKeuangan) && (
-      <section id="keuangan" className="bg-white px-4 py-16">
+      <section id="keuangan" ref={keuRef} className="bg-white px-4 py-16">
         <div className="mx-auto max-w-content">
           <h2 className="flex items-center justify-center gap-2 text-2xl font-bold"><Wallet /> Transparansi Keuangan</h2>
           <div className="mt-8 grid gap-6 md:grid-cols-3">
@@ -225,16 +251,16 @@ export default function HomePage() {
               return (
                 <div key={u} className="rounded-card border bg-slate-50 p-6">
                   <div className="flex items-center gap-2 font-bold text-brand-800"><Icon size={20} /> Kas {u}</div>
-                  <p className="mt-3 text-2xl font-extrabold">{rupiah(s.masuk - s.keluar)}</p>
+                  <p className="mt-3 text-2xl font-extrabold">{trxLoaded ? rupiah(s.masuk - s.keluar) : '…'}</p>
                   <div className="mt-3 space-y-1 text-sm">
-                    <p className="flex items-center gap-2 text-emerald-700"><ArrowDownCircle size={16} /> Masuk: {rupiah(s.masuk)}</p>
-                    <p className="flex items-center gap-2 text-red-600"><ArrowUpCircle size={16} /> Keluar: {rupiah(s.keluar)}</p>
+                    <p className="flex items-center gap-2 text-emerald-700"><ArrowDownCircle size={16} /> Masuk: {trxLoaded ? rupiah(s.masuk) : '…'}</p>
+                    <p className="flex items-center gap-2 text-red-600"><ArrowUpCircle size={16} /> Keluar: {trxLoaded ? rupiah(s.keluar) : '…'}</p>
                   </div>
                 </div>
               );
             })}
           </div>
-          <LaporanKas trx={trx} namaYayasan={profile.namaYayasan} />
+          {trxLoaded ? <LaporanKas trx={trx} namaYayasan={profile.namaYayasan} /> : <p className="mt-10 text-center text-sm text-slate-500">Memuat laporan kas…</p>}
           <p className="mt-10 text-center text-sm text-slate-500">Rekening donasi: <b>{profile.rekeningDonasi}</b></p>
         </div>
       </section>

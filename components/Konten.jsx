@@ -1,9 +1,11 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { collection, getDocs, limit, orderBy, query, where } from 'firebase/firestore';
 import { CalendarDays, Clock, Image as ImageIcon, MapPin, Megaphone, Pin, X, ChevronLeft, ChevronRight, Loader2 } from 'lucide-react';
 import { getDb } from '../lib/firebase';
+import { optimizeUrl } from '../lib/cdn';
+import { CACHE_TTL, cached, useInView } from '../lib/hemat';
 import { BULAN, BULAN_SINGKAT } from '../lib/laporan';
 
 const HARI = ['Minggu', 'Senin', 'Selasa', 'Rabu', 'Kamis', 'Jumat', 'Sabtu'];
@@ -47,27 +49,37 @@ export default function Konten({ institutions = [], showBerita = true, showGaler
   const [detail, setDetail] = useState(null);
   const [light, setLight] = useState(null);
 
+  // Muat konten hanya saat bagian ini mendekati layar, dan cache 10 menit di browser
+  const sentinel = useRef(null);
+  const near = useInView(sentinel, showBerita || showGaleri);
+
   useEffect(() => {
+    if (!near) return undefined;
     let alive = true;
     (async () => {
-      const db = getDb();
-      const cutoff = new Date();
-      cutoff.setDate(cutoff.getDate() - 30);
-      const rs = await Promise.allSettled([
-        getDocs(query(collection(db, 'announcements'), orderBy('tanggal', 'desc'), limit(ANN_LIMIT))),
-        getDocs(query(collection(db, 'events'), where('tanggal', '>=', toStr(cutoff)), orderBy('tanggal', 'asc'))),
-        getDocs(query(collection(db, 'gallery'), orderBy('tanggal', 'desc'), limit(GAL_LIMIT))),
-      ]);
+      const key = `konten-v1-${showBerita ? 1 : 0}${showGaleri ? 1 : 0}`;
+      const data = await cached(key, CACHE_TTL, async () => {
+        const db = getDb();
+        const cutoff = new Date();
+        cutoff.setDate(cutoff.getDate() - 30);
+        const none = Promise.resolve({ docs: [] });
+        const rs = await Promise.allSettled([
+          showBerita ? getDocs(query(collection(db, 'announcements'), orderBy('tanggal', 'desc'), limit(ANN_LIMIT))) : none,
+          showBerita ? getDocs(query(collection(db, 'events'), where('tanggal', '>=', toStr(cutoff)), orderBy('tanggal', 'asc'))) : none,
+          showGaleri ? getDocs(query(collection(db, 'gallery'), orderBy('tanggal', 'desc'), limit(GAL_LIMIT))) : none,
+        ]);
+        const rows = (r) => (r.status === 'fulfilled' ? r.value.docs.map((d) => ({ id: d.id, ...d.data() })) : []);
+        rs.forEach((r) => { if (r.status === 'rejected') console.error('Gagal memuat konten:', r.reason); });
+        return { ann: rows(rs[0]), evt: rows(rs[1]), gal: rows(rs[2]), ok: rs.every((r) => r.status === 'fulfilled') };
+      }, (v) => v.ok);
       if (!alive) return;
-      const rows = (r) => (r.status === 'fulfilled' ? r.value.docs.map((d) => ({ id: d.id, ...d.data() })) : []);
-      rs.forEach((r) => { if (r.status === 'rejected') console.error('Gagal memuat konten:', r.reason); });
-      setAnn(rows(rs[0]));
-      setEvt(rows(rs[1]));
-      setGal(rows(rs[2]));
+      setAnn(data.ann);
+      setEvt(data.evt);
+      setGal(data.gal);
       setLoaded(true);
     })();
     return () => { alive = false; };
-  }, []);
+  }, [near, showBerita, showGaleri]);
 
   const match = (x) => lembaga === 'Semua' || (lembaga === 'Umum' ? !x.lembaga : x.lembaga === lembaga);
   const today = toStr(new Date());
@@ -91,6 +103,7 @@ export default function Konten({ institutions = [], showBerita = true, showGaler
 
   return (
     <>
+      <div ref={sentinel} aria-hidden />
       {showBerita && (
 <section id="berita" className="mx-auto max-w-content px-4 py-16">
         <h2 className="flex items-center justify-center gap-2 text-2xl font-bold"><Megaphone /> Berita &amp; Kegiatan</h2>
@@ -102,7 +115,7 @@ export default function Konten({ institutions = [], showBerita = true, showGaler
             {!loaded ? loading : annList.length === 0 && <p className="rounded-card border bg-white p-6 text-center text-sm text-slate-500">Belum ada pengumuman.</p>}
             {annList.slice(0, annShow).map((a) => (
               <article key={a.id} className="flex flex-col overflow-hidden rounded-card border bg-white sm:flex-row">
-                {a.gambarUrl && <img src={a.gambarUrl} alt="" loading="lazy" className="h-44 w-full object-cover sm:h-auto sm:w-48" />}
+                {a.gambarUrl && <img src={optimizeUrl(a.gambarUrl, 500)} alt="" loading="lazy" className="h-44 w-full object-cover sm:h-auto sm:w-48" />}
                 <div className="flex-1 p-5">
                   <div className="flex flex-wrap items-center gap-2 text-xs text-slate-500">
                     {a.sematkan === 'Ya' && <span className="flex items-center gap-1 font-semibold text-amber-600"><Pin size={12} /> Penting</span>}
@@ -146,7 +159,7 @@ export default function Konten({ institutions = [], showBerita = true, showGaler
           <div className="mt-8 grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
             {galList.slice(0, galShow).map((g, i) => (
               <button key={g.id} onClick={() => setLight(i)} className="group relative aspect-square overflow-hidden rounded-xl bg-slate-100">
-                <img src={g.gambarUrl} alt={g.keterangan || 'Foto kegiatan'} loading="lazy" className="h-full w-full object-cover transition group-hover:scale-105" />
+                <img src={optimizeUrl(g.gambarUrl, 600)} alt={g.keterangan || 'Foto kegiatan'} loading="lazy" className="h-full w-full object-cover transition group-hover:scale-105" />
                 {g.keterangan && <span className="absolute inset-x-0 bottom-0 line-clamp-2 bg-gradient-to-t from-black/70 to-transparent p-2 text-left text-xs text-white">{g.keterangan}</span>}
               </button>
             ))}
@@ -160,7 +173,7 @@ export default function Konten({ institutions = [], showBerita = true, showGaler
 
       {detail && (
         <Modal onClose={() => setDetail(null)}>
-          {detail.gambarUrl && <img src={detail.gambarUrl} alt="" className="max-h-80 w-full object-cover" />}
+          {detail.gambarUrl && <img src={optimizeUrl(detail.gambarUrl, 1200)} alt="" className="max-h-80 w-full object-cover" />}
           <div className="p-6">
             <div className="flex flex-wrap items-center gap-2 text-xs text-slate-500"><Tag>{detail.lembaga || 'Umum'}</Tag><span>{tglPanjang(detail.tanggal)}</span></div>
             <h3 className="mt-2 text-xl font-bold">{detail.judul}</h3>
@@ -214,7 +227,7 @@ function Lightbox({ list, index, setIndex }) {
       <button className="absolute right-4 top-4 rounded-full bg-white/90 p-1.5" onClick={() => setIndex(null)} aria-label="Tutup"><X size={20} /></button>
       <div className="flex w-full items-center justify-center gap-2" onClick={(e) => e.stopPropagation()}>
         <button className="rounded-full bg-white/90 p-2" onClick={() => go(-1)} aria-label="Sebelumnya"><ChevronLeft size={20} /></button>
-        <img src={g.gambarUrl} alt={g.keterangan || ''} className="max-h-[75vh] min-w-0 max-w-full rounded-lg object-contain" />
+        <img src={optimizeUrl(g.gambarUrl, 1600)} alt={g.keterangan || ''} className="max-h-[75vh] min-w-0 max-w-full rounded-lg object-contain" />
         <button className="rounded-full bg-white/90 p-2" onClick={() => go(1)} aria-label="Berikutnya"><ChevronRight size={20} /></button>
       </div>
       <p className="mt-3 max-w-xl text-center text-sm text-white" onClick={(e) => e.stopPropagation()}>
