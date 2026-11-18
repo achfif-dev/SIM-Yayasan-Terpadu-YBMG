@@ -11,6 +11,8 @@ import {
 import { getDb } from '../lib/firebase';
 import LaporanKas from '../components/LaporanKas';
 import Konten from '../components/Konten';
+import SocialIcons from '../components/SocialIcons';
+import { DEFAULT_TAMPILAN, HERO_PAD, applyTheme, heroPhotoStyle, isYa, mergeTampilan, socialLinks } from '../lib/tampilan';
 
 const DEFAULT_PROFILE = {
   namaYayasan: 'Yayasan Kita Bersama',
@@ -42,6 +44,7 @@ function Logo({ url, size = 40 }) {
 
 export default function HomePage() {
   const [profile, setProfile] = useState(DEFAULT_PROFILE);
+  const [tpl, setTpl] = useState(DEFAULT_TAMPILAN);
   const [institutions, setInstitutions] = useState([]);
   const [members, setMembers] = useState([]);
   const [trx, setTrx] = useState([]);
@@ -53,14 +56,18 @@ export default function HomePage() {
     (async () => {
       try {
         const db = getDb();
-        const [p, i, m, t] = await Promise.all([
+        const [p, tp, i, m, t] = await Promise.all([
           getDoc(doc(db, 'settings', 'profile')),
+          getDoc(doc(db, 'settings', 'tampilan')),
           getDocs(collection(db, 'institutions')),
           getDocs(collection(db, 'board_members')),
           getDocs(collection(db, 'transactions')),
         ]);
         if (!alive) return;
         if (p.exists()) setProfile({ ...DEFAULT_PROFILE, ...p.data() });
+        const cfg = mergeTampilan(tp.exists() ? tp.data() : null);
+        setTpl(cfg);
+        applyTheme(cfg);
         setInstitutions(i.docs.map((d) => ({ id: d.id, ...d.data() })));
         setMembers(m.docs.map((d) => ({ id: d.id, ...d.data() })).sort((a, b) => (a.urutan || 0) - (b.urutan || 0)));
         setTrx(t.docs.map((d) => ({ id: d.id, ...d.data() })));
@@ -83,12 +90,17 @@ export default function HomePage() {
   }, [trx]);
 
   const shown = filter === 'Semua' ? institutions : institutions.filter((x) => x.kategori === filter);
-  const nav = [['Profil', '#profil'], ['Lembaga', '#lembaga'], ['Berita', '#berita'], ['Galeri', '#galeri'], ['Pengurus', '#pengurus'], ['Keuangan', '#keuangan'], ['Kontak', '#kontak']];
+  const nav = [
+    ['Profil', '#profil', 'tampilProfil'], ['Lembaga', '#lembaga', 'tampilLembaga'], ['Berita', '#berita', 'tampilBerita'],
+    ['Galeri', '#galeri', 'tampilGaleri'], ['Pengurus', '#pengurus', 'tampilPengurus'], ['Keuangan', '#keuangan', 'tampilKeuangan'], ['Kontak', '#kontak'],
+  ].filter(([, , flag]) => !flag || isYa(tpl[flag])).map(([l, h]) => [l, h]);
+  const left = tpl.heroRata === 'kiri';
+  const hasSocial = socialLinks(tpl).length > 0;
 
   return (
     <div>
       <header className="sticky top-0 z-30 border-b bg-white/90 backdrop-blur">
-        <div className="mx-auto flex max-w-6xl items-center justify-between px-4 py-3">
+        <div className="mx-auto flex max-w-content items-center justify-between px-4 py-3">
           <a href="#" className="flex items-center gap-3">
             <Logo url={profile.logoUrl} />
             <span className="font-bold text-brand-800">{profile.namaYayasan}</span>
@@ -107,25 +119,36 @@ export default function HomePage() {
         )}
       </header>
 
-      <section className="bg-gradient-to-br from-brand-900 via-brand-800 to-brand-600 px-4 py-20 text-center text-white">
-        <div className="mx-auto max-w-3xl">
-          <div className="mb-5 flex justify-center"><Logo url={profile.logoUrl} size={96} /></div>
+      <section className={`relative isolate overflow-hidden bg-gradient-to-br from-brand-900 via-brand-800 to-brand-600 px-4 text-white ${HERO_PAD[tpl.heroTinggi] || HERO_PAD.sedang} ${left ? 'text-left' : 'text-center'}`}>
+        {tpl.heroFoto && (
+          <>
+            {/* Foto latar: tepinya memudar ke warna utama di belakangnya */}
+            <div aria-hidden className="absolute inset-0 -z-10" style={heroPhotoStyle(tpl)} />
+            <div aria-hidden className="absolute inset-0 -z-10" style={{ backgroundColor: `rgb(var(--brand-900) / ${(Number(tpl.heroOverlay) || 0) / 100})` }} />
+          </>
+        )}
+        <div className="mx-auto max-w-content"><div className={left ? 'max-w-3xl' : 'mx-auto max-w-3xl'}>
+          {isYa(tpl.heroTampilLogo) && <div className={`mb-5 flex ${left ? 'justify-start' : 'justify-center'}`}><Logo url={profile.logoUrl} size={96} /></div>}
           <h1 className="text-3xl font-extrabold sm:text-5xl">{profile.namaYayasan}</h1>
           <p className="mt-4 text-lg text-brand-100">{profile.tagline}</p>
-          <div className="mt-8 flex flex-wrap justify-center gap-3">
-            <a href="#lembaga" className="rounded-lg bg-white px-5 py-2.5 font-semibold text-brand-800">Lihat Lembaga</a>
-            <a href="#keuangan" className="rounded-lg border border-white/60 px-5 py-2.5 font-semibold">Transparansi Kas</a>
+          <div className={`mt-8 flex flex-wrap gap-3 ${left ? 'justify-start' : 'justify-center'}`}>
+            {tpl.heroTombol1Teks && <a href="#lembaga" className="rounded-lg bg-white px-5 py-2.5 font-semibold text-brand-800">{tpl.heroTombol1Teks}</a>}
+            {tpl.heroTombol2Teks && <a href="#keuangan" className="rounded-lg border border-white/60 px-5 py-2.5 font-semibold">{tpl.heroTombol2Teks}</a>}
           </div>
-        </div>
+          {hasSocial && isYa(tpl.sosialDiHero) && <SocialIcons cfg={tpl} className={`mt-6 ${left ? 'justify-start' : 'justify-center'}`} />}
+        </div></div>
       </section>
 
+      {isYa(tpl.tampilProfil) && (
       <section id="profil" className="mx-auto max-w-4xl px-4 py-16 text-center">
         <h2 className="text-2xl font-bold">Profil Yayasan</h2>
         <p className="mt-4 whitespace-pre-line leading-relaxed text-slate-600">{profile.deskripsi}</p>
       </section>
+      )}
 
+      {isYa(tpl.tampilLembaga) && (
       <section id="lembaga" className="bg-white px-4 py-16">
-        <div className="mx-auto max-w-6xl">
+        <div className="mx-auto max-w-content">
           <h2 className="text-center text-2xl font-bold">Lembaga di Bawah Naungan</h2>
           <div className="mt-6 flex flex-wrap justify-center gap-2">
             {['Semua', ...UNITS].map((f) => (
@@ -140,7 +163,7 @@ export default function HomePage() {
               {shown.map((x) => {
                 const Icon = ICONS[x.kategori] || Building2;
                 return (
-                  <article key={x.id} className="rounded-2xl border bg-slate-50 p-6 transition hover:-translate-y-1 hover:shadow-lg">
+                  <article key={x.id} className="rounded-card border bg-slate-50 p-6 transition hover:-translate-y-1 hover:shadow-lg">
                     <div className="flex items-center gap-3">
                       {x.logoUrl ? <Logo url={x.logoUrl} size={48} /> : <div className="flex h-12 w-12 items-center justify-center rounded-full bg-brand-100 text-brand-700"><Icon size={24} /></div>}
                       <div>
@@ -160,10 +183,12 @@ export default function HomePage() {
           )}
         </div>
       </section>
+      )}
 
-      <Konten institutions={institutions} />
+      <Konten institutions={institutions} showBerita={isYa(tpl.tampilBerita)} showGaleri={isYa(tpl.tampilGaleri)} />
 
-      <section id="pengurus" className="mx-auto max-w-6xl px-4 py-16">
+      {isYa(tpl.tampilPengurus) && (
+      <section id="pengurus" className="mx-auto max-w-content px-4 py-16">
         <h2 className="flex items-center justify-center gap-2 text-center text-2xl font-bold"><Users /> Struktur Kepengurusan</h2>
         {members.length === 0 && <p className="mt-10 text-center text-slate-500">Belum ada data pengurus.</p>}
         {DIVISI.map((dv) => {
@@ -187,16 +212,18 @@ export default function HomePage() {
           );
         })}
       </section>
+      )}
 
+      {isYa(tpl.tampilKeuangan) && (
       <section id="keuangan" className="bg-white px-4 py-16">
-        <div className="mx-auto max-w-6xl">
+        <div className="mx-auto max-w-content">
           <h2 className="flex items-center justify-center gap-2 text-2xl font-bold"><Wallet /> Transparansi Keuangan</h2>
           <div className="mt-8 grid gap-6 md:grid-cols-3">
             {UNITS.map((u) => {
               const Icon = ICONS[u];
               const s = saldo[u];
               return (
-                <div key={u} className="rounded-2xl border bg-slate-50 p-6">
+                <div key={u} className="rounded-card border bg-slate-50 p-6">
                   <div className="flex items-center gap-2 font-bold text-brand-800"><Icon size={20} /> Kas {u}</div>
                   <p className="mt-3 text-2xl font-extrabold">{rupiah(s.masuk - s.keluar)}</p>
                   <div className="mt-3 space-y-1 text-sm">
@@ -211,9 +238,10 @@ export default function HomePage() {
           <p className="mt-10 text-center text-sm text-slate-500">Rekening donasi: <b>{profile.rekeningDonasi}</b></p>
         </div>
       </section>
+      )}
 
       <footer id="kontak" className="bg-brand-900 px-4 py-12 text-brand-100">
-        <div className="mx-auto grid max-w-6xl gap-8 md:grid-cols-2">
+        <div className="mx-auto grid max-w-content gap-8 md:grid-cols-2">
           <div className="flex items-start gap-3">
             <Logo url={profile.logoUrl} size={48} />
             <div>
@@ -225,8 +253,10 @@ export default function HomePage() {
             <p className="flex items-center gap-2"><MapPin size={16} /> {profile.alamat}</p>
             <p className="flex items-center gap-2"><Phone size={16} /> {profile.telepon}</p>
             <p className="flex items-center gap-2"><Mail size={16} /> {profile.email}</p>
+            {hasSocial && <SocialIcons cfg={tpl} className="pt-2" />}
           </div>
         </div>
+        {tpl.footerTeks && <p className="mx-auto mt-8 max-w-content whitespace-pre-line text-center text-sm text-brand-100">{tpl.footerTeks}</p>}
         <p className="mt-8 text-center text-xs text-brand-100/70">© {new Date().getFullYear()} {profile.namaYayasan}</p>
       </footer>
     </div>

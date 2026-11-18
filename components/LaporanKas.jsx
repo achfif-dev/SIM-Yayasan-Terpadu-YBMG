@@ -102,12 +102,12 @@ export default function LaporanKas({ trx, namaYayasan = 'Yayasan' }) {
       </div>
 
       <div className="grid gap-6 lg:grid-cols-2">
-        <div className="rounded-2xl border bg-slate-50 p-5">
+        <div className="rounded-card border bg-slate-50 p-5">
           <h4 className="mb-3 font-bold">{tahun === 'Semua' ? 'Per tahun' : `Per bulan, ${tahun}`}</h4>
           <Legend />
           <TimeChart buckets={report.buckets} />
         </div>
-        <div className="rounded-2xl border bg-slate-50 p-5">
+        <div className="rounded-card border bg-slate-50 p-5">
           <h4 className="mb-3 font-bold">Per unit · {periodLabel(tahun, bulan)}</h4>
           <Legend />
           <UnitChart data={report.perUnit} />
@@ -122,7 +122,7 @@ export default function LaporanKas({ trx, namaYayasan = 'Yayasan' }) {
         </div>
       </div>
 
-      <div className="overflow-x-auto rounded-2xl border">
+      <div className="overflow-x-auto rounded-card border">
         <table className="w-full min-w-[640px] text-left text-sm">
           <thead className="bg-brand-50 text-xs uppercase text-slate-600">
             <tr><th className="p-3">Tanggal</th><th className="p-3">Unit</th><th className="p-3">Keterangan</th>

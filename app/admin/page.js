@@ -6,13 +6,14 @@ import { onAuthStateChanged, signOut } from 'firebase/auth';
 import {
   addDoc, collection, deleteDoc, doc, getDoc, getDocs, serverTimestamp, setDoc, updateDoc,
 } from 'firebase/firestore';
-import { Building2, Landmark, Users, Wallet, LogOut, Loader2, Pencil, Trash2, Plus, Upload, Home, Paperclip, Megaphone, CalendarDays, Image as ImageIcon } from 'lucide-react';
+import { Building2, Landmark, Users, Wallet, LogOut, Loader2, Pencil, Trash2, Plus, Upload, Home, Paperclip, Megaphone, CalendarDays, Image as ImageIcon, Palette, RotateCcw } from 'lucide-react';
 import Link from 'next/link';
 import { getAuthInstance, getDb } from '../../lib/firebase';
 import { isAdminEmail } from '../../lib/admin';
 import { uploadImage, deleteBukti } from '../../lib/upload';
 import { BuktiField } from '../../components/Bukti';
 import LaporanKas from '../../components/LaporanKas';
+import { DEFAULT_TAMPILAN, TAMPILAN_GROUPS, applyTheme, mergeTampilan } from '../../lib/tampilan';
 
 const KATEGORI = ['Masjid', 'Pendidikan', 'Sosial'];
 const DIVISI = ['Pembina', 'Pengawas', 'Pengurus Harian', 'Unit'];
@@ -107,8 +108,27 @@ function Field({ f, value, onChange }) {
   if (f.type === 'select') {
     return (
       <select className="inp" {...base} onChange={(e) => onChange(e.target.value)}>
-        {f.options.map((o) => <option key={o} value={o}>{o}</option>)}
+        {f.options.map((o) => (typeof o === 'object'
+          ? <option key={o.value} value={o.value}>{o.label}</option>
+          : <option key={o} value={o}>{o}</option>))}
       </select>
+    );
+  }
+  if (f.type === 'color') {
+    const v = /^#[0-9a-f]{6}$/i.test(value || '') ? value : '#000000';
+    return (
+      <div className="flex items-center gap-3">
+        <input type="color" value={v} onChange={(e) => onChange(e.target.value)} className="h-10 w-14 cursor-pointer rounded border border-slate-300 bg-white p-1" />
+        <input className="inp !w-32 font-mono" value={value ?? ''} maxLength={7} onChange={(e) => onChange(e.target.value)} />
+      </div>
+    );
+  }
+  if (f.type === 'range') {
+    return (
+      <div className="flex items-center gap-3">
+        <input type="range" min={f.min} max={f.max} step={f.step || 1} value={Number(value) || 0} onChange={(e) => onChange(e.target.value)} className="w-full accent-brand-700" />
+        <span className="w-12 text-right text-sm tabular-nums">{Number(value) || 0}%</span>
+      </div>
     );
   }
   if (f.type === 'bukti') return <BuktiField value={value} onChange={onChange} />;
@@ -127,6 +147,7 @@ function Field({ f, value, onChange }) {
           {up ? <Loader2 size={14} className="animate-spin" /> : <Upload size={14} />} {value ? 'Ganti' : 'Upload'}
           <input type="file" accept="image/*" className="hidden" onChange={handle} />
         </label>
+        {f.clearable && value && <button type="button" className="btn-light !text-red-600" onClick={() => onChange('')}><Trash2 size={14} /> Hapus</button>}
       </div>
     );
   }
@@ -170,6 +191,60 @@ function ProfileTab() {
       <FormFields fields={PROFILE_FIELDS} form={form} setForm={setForm} />
       <div className="flex items-center gap-3">
         <button className="btn" disabled={busy}>{busy && <Loader2 size={14} className="animate-spin" />} Simpan Perubahan</button>
+        <span className="text-sm text-slate-500">{msg}</span>
+      </div>
+    </form>
+  );
+}
+
+function TampilanTab() {
+  const [form, setForm] = useState(DEFAULT_TAMPILAN);
+  const [loaded, setLoaded] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [msg, setMsg] = useState('');
+
+  useEffect(() => {
+    getDoc(doc(getDb(), 'settings', 'tampilan'))
+      .then((s) => { if (s.exists()) setForm(mergeTampilan(s.data())); })
+      .catch(() => {})
+      .finally(() => setLoaded(true));
+  }, []);
+
+  // Pratinjau langsung: warna/font berubah saat diedit (cache baru ditulis setelah Simpan)
+  useEffect(() => { if (loaded) applyTheme(form, { cache: false }); }, [form, loaded]);
+
+  const save = async (e) => {
+    e.preventDefault();
+    setBusy(true);
+    try {
+      await setDoc(doc(getDb(), 'settings', 'tampilan'), form, { merge: true });
+      applyTheme(form);
+      setMsg('Tersimpan ✓ — buka beranda untuk melihat hasilnya');
+    } catch (err) { setMsg('Gagal: ' + err.message); }
+    setBusy(false);
+  };
+
+  const reset = () => {
+    if (!confirm('Kembalikan semua pengaturan tampilan ke bawaan? (Foto latar ikut dihapus dari form; klik Simpan untuk menerapkan.)')) return;
+    setForm(DEFAULT_TAMPILAN);
+  };
+
+  if (!loaded) return <div className="flex justify-center p-10"><Loader2 className="animate-spin text-brand-700" /></div>;
+
+  return (
+    <form onSubmit={save} className="space-y-6">
+      <p className="rounded-xl bg-brand-50 p-4 text-sm text-brand-900">
+        Warna dan font langsung berubah di halaman ini sebagai pratinjau. Tekan <b>Simpan Tampilan</b> agar berlaku di beranda.
+      </p>
+      {TAMPILAN_GROUPS.map((g) => (
+        <section key={g.id} className="space-y-4 rounded-2xl bg-white p-6 shadow-sm">
+          <h3 className="font-bold text-brand-800">{g.title}</h3>
+          <FormFields fields={g.fields} form={form} setForm={setForm} />
+        </section>
+      ))}
+      <div className="sticky bottom-0 flex flex-wrap items-center gap-3 rounded-2xl border bg-white p-4 shadow-lg">
+        <button className="btn" disabled={busy}>{busy && <Loader2 size={14} className="animate-spin" />} Simpan Tampilan</button>
+        <button type="button" className="btn-light" onClick={reset}><RotateCcw size={14} /> Kembalikan bawaan</button>
         <span className="text-sm text-slate-500">{msg}</span>
       </div>
     </form>
@@ -281,6 +356,7 @@ function KasTab() {
 
 const TABS = [
   { id: 'profil', label: 'Identitas', icon: Building2 },
+  { id: 'tampilan', label: 'Tampilan', icon: Palette },
   { id: 'lembaga', label: 'Lembaga', icon: Landmark },
   { id: 'pengurus', label: 'Pengurus', icon: Users },
   { id: 'kas', label: 'Kas', icon: Wallet },
@@ -330,6 +406,7 @@ export default function AdminPage() {
           ))}
         </div>
         {tab === 'profil' && <ProfileTab />}
+        {tab === 'tampilan' && <TampilanTab />}
         {tab === 'lembaga' && (
           <CrudTab col="institutions" fields={INST_FIELDS} sort={byUrutan}
             renderItem={(i) => (<><p className="font-semibold">{i.namaLembaga} <span className="text-xs text-brand-700">({i.kategori})</span></p><p className="truncate text-slate-500">{i.programUnggulan}</p></>)} />

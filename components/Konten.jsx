@@ -25,7 +25,7 @@ function Modal({ onClose, children }) {
   }, [onClose]);
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4" onClick={onClose}>
-      <div className="relative max-h-full w-full max-w-2xl overflow-y-auto rounded-2xl bg-white" onClick={(e) => e.stopPropagation()}>
+      <div className="relative max-h-full w-full max-w-2xl overflow-y-auto rounded-card bg-white" onClick={(e) => e.stopPropagation()}>
         <button className="absolute right-3 top-3 z-10 rounded-full bg-white p-1 shadow" onClick={onClose} aria-label="Tutup"><X size={18} /></button>
         {children}
       </div>
@@ -35,7 +35,7 @@ function Modal({ onClose, children }) {
 
 const Tag = ({ children }) => <span className="rounded-full bg-brand-100 px-2.5 py-0.5 text-xs font-semibold text-brand-800">{children}</span>;
 
-export default function Konten({ institutions = [] }) {
+export default function Konten({ institutions = [], showBerita = true, showGaleri = true }) {
   const [ann, setAnn] = useState([]);
   const [evt, setEvt] = useState([]);
   const [gal, setGal] = useState([]);
@@ -91,16 +91,17 @@ export default function Konten({ institutions = [] }) {
 
   return (
     <>
-      <section id="berita" className="mx-auto max-w-6xl px-4 py-16">
+      {showBerita && (
+<section id="berita" className="mx-auto max-w-content px-4 py-16">
         <h2 className="flex items-center justify-center gap-2 text-2xl font-bold"><Megaphone /> Berita &amp; Kegiatan</h2>
         <div className="mt-6 flex justify-center">{Filter}</div>
 
         <div className="mt-10 grid gap-8 lg:grid-cols-3">
           <div className="space-y-5 lg:col-span-2">
             <h3 className="font-bold text-brand-800">Pengumuman</h3>
-            {!loaded ? loading : annList.length === 0 && <p className="rounded-2xl border bg-white p-6 text-center text-sm text-slate-500">Belum ada pengumuman.</p>}
+            {!loaded ? loading : annList.length === 0 && <p className="rounded-card border bg-white p-6 text-center text-sm text-slate-500">Belum ada pengumuman.</p>}
             {annList.slice(0, annShow).map((a) => (
-              <article key={a.id} className="flex flex-col overflow-hidden rounded-2xl border bg-white sm:flex-row">
+              <article key={a.id} className="flex flex-col overflow-hidden rounded-card border bg-white sm:flex-row">
                 {a.gambarUrl && <img src={a.gambarUrl} alt="" loading="lazy" className="h-44 w-full object-cover sm:h-auto sm:w-48" />}
                 <div className="flex-1 p-5">
                   <div className="flex flex-wrap items-center gap-2 text-xs text-slate-500">
@@ -121,7 +122,7 @@ export default function Konten({ institutions = [] }) {
 
           <aside className="space-y-4">
             <h3 className="font-bold text-brand-800">Jadwal Kegiatan</h3>
-            {!loaded ? loading : upcoming.length === 0 && <p className="rounded-2xl border bg-white p-6 text-center text-sm text-slate-500">Belum ada kegiatan mendatang.</p>}
+            {!loaded ? loading : upcoming.length === 0 && <p className="rounded-card border bg-white p-6 text-center text-sm text-slate-500">Belum ada kegiatan mendatang.</p>}
             {upcoming.map((e) => <EventCard key={e.id} e={e} />)}
             {past.length > 0 && (
               <div>
@@ -134,9 +135,11 @@ export default function Konten({ institutions = [] }) {
           </aside>
         </div>
       </section>
+)}
 
-      <section id="galeri" className="bg-white px-4 py-16">
-        <div className="mx-auto max-w-6xl">
+      {showGaleri && (
+<section id="galeri" className="bg-white px-4 py-16">
+        <div className="mx-auto max-w-content">
           <h2 className="flex items-center justify-center gap-2 text-2xl font-bold"><ImageIcon /> Galeri Kegiatan</h2>
           <div className="mt-6 flex justify-center">{Filter}</div>
           {!loaded ? loading : galList.length === 0 && <p className="mt-10 text-center text-slate-500">Belum ada foto.</p>}
@@ -153,6 +156,7 @@ export default function Konten({ institutions = [] }) {
           )}
         </div>
       </section>
+)}
 
       {detail && (
         <Modal onClose={() => setDetail(null)}>
@@ -175,7 +179,7 @@ export default function Konten({ institutions = [] }) {
 function EventCard({ e }) {
   const p = parts(e.tanggal);
   return (
-    <div className="flex gap-4 rounded-2xl border bg-white p-4">
+    <div className="flex gap-4 rounded-card border bg-white p-4">
       <div className="flex h-16 w-14 shrink-0 flex-col items-center justify-center rounded-xl bg-brand-700 text-white">
         <span className="text-xl font-extrabold leading-none">{p ? p.d : '-'}</span>
         <span className="text-xs uppercase">{p ? BULAN_SINGKAT[p.m - 1] : ''}</span>
