@@ -122,7 +122,7 @@ function Field({ f, value, onChange }) {
     };
     return (
       <div className="flex items-center gap-3">
-        {value ? <img src={value} alt="" className={`border object-cover ${f.maxSize ? 'h-16 w-24 rounded-lg' : 'h-14 w-14 rounded-full'}`} /> : <div className="flex h-14 w-14 items-center justify-center rounded-full bg-slate-100"><Upload size={18} /></div>}
+        {value ? <img src={value} alt="" className={f.folder === 'logos' ? 'h-14 max-w-[8rem] object-contain' : `border object-cover ${f.maxSize ? 'h-16 w-24 rounded-lg' : 'h-14 w-14 rounded-full'}`} /> : <div className="flex h-14 w-14 items-center justify-center rounded-full bg-slate-100"><Upload size={18} /></div>}
         <label className="btn-light cursor-pointer">
           {up ? <Loader2 size={14} className="animate-spin" /> : <Upload size={14} />} {value ? 'Ganti' : 'Upload'}
           <input type="file" accept="image/*" className="hidden" onChange={handle} />

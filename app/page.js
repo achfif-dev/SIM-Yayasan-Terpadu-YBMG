@@ -30,7 +30,8 @@ const rupiah = (n) => new Intl.NumberFormat('id-ID', { style: 'currency', curren
 
 function Logo({ url, size = 40 }) {
   if (url) {
-    return <Image src={url} alt="Logo" width={size} height={size} unoptimized className="rounded-full object-cover" style={{ width: size, height: size }} />;
+    // Logo tampil apa adanya: tanpa bingkai, tanpa latar, mengikuti bentuk aslinya
+    return <img src={url} alt="Logo" className="object-contain" style={{ height: size, width: 'auto', maxWidth: size * 2.5 }} />;
   }
   return (
     <div className="flex items-center justify-center rounded-full bg-brand-100 text-brand-700" style={{ width: size, height: size }}>
