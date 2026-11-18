@@ -6,7 +6,7 @@ import { onAuthStateChanged, signOut } from 'firebase/auth';
 import {
   addDoc, collection, deleteDoc, doc, getDoc, getDocs, serverTimestamp, setDoc, updateDoc,
 } from 'firebase/firestore';
-import { Building2, Landmark, Users, Wallet, LogOut, Loader2, Pencil, Trash2, Plus, Upload, Home, Paperclip } from 'lucide-react';
+import { Building2, Landmark, Users, Wallet, LogOut, Loader2, Pencil, Trash2, Plus, Upload, Home, Paperclip, Megaphone, CalendarDays, Image as ImageIcon } from 'lucide-react';
 import Link from 'next/link';
 import { getAuthInstance, getDb } from '../../lib/firebase';
 import { isAdminEmail } from '../../lib/admin';
@@ -53,14 +53,57 @@ const TRX_FIELDS = [
   { name: 'bukti', label: 'Bukti Transaksi (foto nota/kwitansi)', type: 'bukti' },
 ];
 
+const LEMBAGA_LABEL = 'Lembaga (kosongkan = umum / seluruh yayasan)';
+const ANN_FIELDS = [
+  { name: 'judul', label: 'Judul', required: true },
+  { name: 'tanggal', label: 'Tanggal', type: 'date', required: true },
+  { name: 'lembaga', label: LEMBAGA_LABEL, type: 'lembaga' },
+  { name: 'sematkan', label: 'Sematkan di atas (penting)', type: 'select', options: ['Tidak', 'Ya'] },
+  { name: 'isi', label: 'Isi pengumuman / berita', type: 'textarea', rows: 6, required: true },
+  { name: 'gambarUrl', label: 'Gambar (opsional)', type: 'image', folder: 'berita', maxSize: 900, quality: 0.7 },
+];
+const EVT_FIELDS = [
+  { name: 'judul', label: 'Nama Kegiatan', required: true },
+  { name: 'tanggal', label: 'Tanggal', type: 'date', required: true },
+  { name: 'jamMulai', label: 'Jam Mulai', type: 'time' },
+  { name: 'jamSelesai', label: 'Jam Selesai', type: 'time' },
+  { name: 'lokasi', label: 'Lokasi' },
+  { name: 'lembaga', label: LEMBAGA_LABEL, type: 'lembaga' },
+  { name: 'deskripsi', label: 'Deskripsi', type: 'textarea' },
+];
+const GAL_FIELDS = [
+  { name: 'gambarUrl', label: 'Foto', type: 'image', folder: 'galeri', maxSize: 800, quality: 0.65, required: true },
+  { name: 'keterangan', label: 'Keterangan' },
+  { name: 'tanggal', label: 'Tanggal', type: 'date', required: true },
+  { name: 'lembaga', label: LEMBAGA_LABEL, type: 'lembaga' },
+];
+
 const byUrutan = (a, b) => (a.urutan || 0) - (b.urutan || 0);
+const byTanggalAsc = (a, b) => String(a.tanggal || '').localeCompare(String(b.tanggal || ''));
 const byTanggal = (a, b) => String(b.tanggal || '').localeCompare(String(a.tanggal || ''));
 const initOf = (fields) => Object.fromEntries(fields.map((f) => [f.name, f.type === 'select' ? f.options[0] : f.type === 'number' ? 0 : '']));
+
+function LembagaSelect({ value, onChange }) {
+  const [opts, setOpts] = useState([]);
+  useEffect(() => {
+    getDocs(collection(getDb(), 'institutions'))
+      .then((snap) => setOpts(snap.docs.map((d) => d.data().namaLembaga).filter(Boolean).sort()))
+      .catch(() => {});
+  }, []);
+  const list = value && !opts.includes(value) ? [...opts, value] : opts;
+  return (
+    <select className="inp" value={value ?? ''} onChange={(e) => onChange(e.target.value)}>
+      <option value="">Umum (seluruh yayasan)</option>
+      {list.map((n) => <option key={n} value={n}>{n}</option>)}
+    </select>
+  );
+}
 
 function Field({ f, value, onChange }) {
   const [up, setUp] = useState(false);
   const base = { value: value ?? '', required: f.required };
-  if (f.type === 'textarea') return <textarea rows={3} className="inp" {...base} onChange={(e) => onChange(e.target.value)} />;
+  if (f.type === 'lembaga') return <LembagaSelect value={value} onChange={onChange} />;
+  if (f.type === 'textarea') return <textarea rows={f.rows || 3} className="inp" {...base} onChange={(e) => onChange(e.target.value)} />;
   if (f.type === 'select') {
     return (
       <select className="inp" {...base} onChange={(e) => onChange(e.target.value)}>
@@ -74,12 +117,12 @@ function Field({ f, value, onChange }) {
       const file = e.target.files?.[0];
       if (!file) return;
       setUp(true);
-      try { onChange(await uploadImage(file, f.folder)); } catch (err) { alert('Upload gagal: ' + err.message); }
+      try { onChange(await uploadImage(file, f.folder, f.maxSize ? { maxSize: f.maxSize, quality: f.quality } : undefined)); } catch (err) { alert('Upload gagal: ' + err.message); }
       setUp(false);
     };
     return (
       <div className="flex items-center gap-3">
-        {value ? <img src={value} alt="" className="h-14 w-14 rounded-full border object-cover" /> : <div className="flex h-14 w-14 items-center justify-center rounded-full bg-slate-100"><Upload size={18} /></div>}
+        {value ? <img src={value} alt="" className={`border object-cover ${f.maxSize ? 'h-16 w-24 rounded-lg' : 'h-14 w-14 rounded-full'}`} /> : <div className="flex h-14 w-14 items-center justify-center rounded-full bg-slate-100"><Upload size={18} /></div>}
         <label className="btn-light cursor-pointer">
           {up ? <Loader2 size={14} className="animate-spin" /> : <Upload size={14} />} {value ? 'Ganti' : 'Upload'}
           <input type="file" accept="image/*" className="hidden" onChange={handle} />
@@ -157,6 +200,8 @@ function CrudTab({ col, fields, sort, renderItem, numberFields = [], onItems }) 
 
   const save = async (e) => {
     e.preventDefault();
+    const missing = fields.find((f) => f.required && f.type === 'image' && !form[f.name]);
+    if (missing) { setMsg(`${missing.label} wajib diisi`); return; }
     setBusy(true);
     const data = { ...form };
     numberFields.forEach((n) => { data[n] = Number(data[n]) || 0; });
@@ -239,6 +284,9 @@ const TABS = [
   { id: 'lembaga', label: 'Lembaga', icon: Landmark },
   { id: 'pengurus', label: 'Pengurus', icon: Users },
   { id: 'kas', label: 'Kas', icon: Wallet },
+  { id: 'berita', label: 'Berita', icon: Megaphone },
+  { id: 'kegiatan', label: 'Kegiatan', icon: CalendarDays },
+  { id: 'galeri', label: 'Galeri', icon: ImageIcon },
 ];
 
 export default function AdminPage() {
@@ -291,6 +339,18 @@ export default function AdminPage() {
             renderItem={(m) => (<><p className="font-semibold">#{m.urutan} {m.nama}</p><p className="text-slate-500">{m.jabatan} · {m.divisi}</p></>)} />
         )}
         {tab === 'kas' && <KasTab />}
+        {tab === 'berita' && (
+          <CrudTab col="announcements" fields={ANN_FIELDS} sort={byTanggal}
+            renderItem={(a) => (<><p className="font-semibold">{a.sematkan === 'Ya' && '📌 '}{a.judul}</p><p className="truncate text-slate-500">{a.tanggal} · {a.lembaga || 'Umum'}</p></>)} />
+        )}
+        {tab === 'kegiatan' && (
+          <CrudTab col="events" fields={EVT_FIELDS} sort={byTanggalAsc}
+            renderItem={(e) => (<><p className="font-semibold">{e.judul}</p><p className="truncate text-slate-500">{e.tanggal}{e.jamMulai ? ` · ${e.jamMulai}` : ''} · {e.lembaga || 'Umum'}{e.lokasi ? ` · ${e.lokasi}` : ''}</p></>)} />
+        )}
+        {tab === 'galeri' && (
+          <CrudTab col="gallery" fields={GAL_FIELDS} sort={byTanggal}
+            renderItem={(g) => (<div className="flex items-center gap-3">{g.gambarUrl && <img src={g.gambarUrl} alt="" className="h-12 w-12 rounded-lg object-cover" />}<div className="min-w-0"><p className="truncate font-semibold">{g.keterangan || 'Tanpa keterangan'}</p><p className="truncate text-slate-500">{g.tanggal} · {g.lembaga || 'Umum'}</p></div></div>)} />
+        )}
       </main>
     </div>
   );

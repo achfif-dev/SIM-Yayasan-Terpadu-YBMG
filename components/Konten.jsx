@@ -1,0 +1,221 @@
+'use client';
+
+import { useEffect, useState } from 'react';
+import { collection, getDocs, limit, orderBy, query, where } from 'firebase/firestore';
+import { CalendarDays, Clock, Image as ImageIcon, MapPin, Megaphone, Pin, X, ChevronLeft, ChevronRight, Loader2 } from 'lucide-react';
+import { getDb } from '../lib/firebase';
+import { BULAN, BULAN_SINGKAT } from '../lib/laporan';
+
+const HARI = ['Minggu', 'Senin', 'Selasa', 'Rabu', 'Kamis', 'Jumat', 'Sabtu'];
+const ANN_LIMIT = 12;
+const GAL_LIMIT = 24;
+
+const pad = (n) => String(n).padStart(2, '0');
+const toStr = (d) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+const parts = (s) => { const [y, m, d] = String(s || '').split('-').map(Number); return y && m && d ? { y, m, d } : null; };
+const tglPanjang = (s) => { const p = parts(s); return p ? `${p.d} ${BULAN[p.m - 1]} ${p.y}` : '-'; };
+const hariTgl = (s) => { const p = parts(s); return p ? `${HARI[new Date(p.y, p.m - 1, p.d).getDay()]}, ${tglPanjang(s)}` : '-'; };
+const jam = (e) => [e.jamMulai, e.jamSelesai].filter(Boolean).join(' – ');
+
+function Modal({ onClose, children }) {
+  useEffect(() => {
+    const h = (e) => { if (e.key === 'Escape') onClose(); };
+    window.addEventListener('keydown', h);
+    return () => window.removeEventListener('keydown', h);
+  }, [onClose]);
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4" onClick={onClose}>
+      <div className="relative max-h-full w-full max-w-2xl overflow-y-auto rounded-2xl bg-white" onClick={(e) => e.stopPropagation()}>
+        <button className="absolute right-3 top-3 z-10 rounded-full bg-white p-1 shadow" onClick={onClose} aria-label="Tutup"><X size={18} /></button>
+        {children}
+      </div>
+    </div>
+  );
+}
+
+const Tag = ({ children }) => <span className="rounded-full bg-brand-100 px-2.5 py-0.5 text-xs font-semibold text-brand-800">{children}</span>;
+
+export default function Konten({ institutions = [] }) {
+  const [ann, setAnn] = useState([]);
+  const [evt, setEvt] = useState([]);
+  const [gal, setGal] = useState([]);
+  const [loaded, setLoaded] = useState(false);
+  const [lembaga, setLembaga] = useState('Semua');
+  const [annShow, setAnnShow] = useState(6);
+  const [galShow, setGalShow] = useState(12);
+  const [showPast, setShowPast] = useState(false);
+  const [detail, setDetail] = useState(null);
+  const [light, setLight] = useState(null);
+
+  useEffect(() => {
+    let alive = true;
+    (async () => {
+      const db = getDb();
+      const cutoff = new Date();
+      cutoff.setDate(cutoff.getDate() - 30);
+      const rs = await Promise.allSettled([
+        getDocs(query(collection(db, 'announcements'), orderBy('tanggal', 'desc'), limit(ANN_LIMIT))),
+        getDocs(query(collection(db, 'events'), where('tanggal', '>=', toStr(cutoff)), orderBy('tanggal', 'asc'))),
+        getDocs(query(collection(db, 'gallery'), orderBy('tanggal', 'desc'), limit(GAL_LIMIT))),
+      ]);
+      if (!alive) return;
+      const rows = (r) => (r.status === 'fulfilled' ? r.value.docs.map((d) => ({ id: d.id, ...d.data() })) : []);
+      rs.forEach((r) => { if (r.status === 'rejected') console.error('Gagal memuat konten:', r.reason); });
+      setAnn(rows(rs[0]));
+      setEvt(rows(rs[1]));
+      setGal(rows(rs[2]));
+      setLoaded(true);
+    })();
+    return () => { alive = false; };
+  }, []);
+
+  const match = (x) => lembaga === 'Semua' || (lembaga === 'Umum' ? !x.lembaga : x.lembaga === lembaga);
+  const today = toStr(new Date());
+
+  const annList = ann.filter(match).sort((a, b) =>
+    (b.sematkan === 'Ya') - (a.sematkan === 'Ya') || String(b.tanggal).localeCompare(String(a.tanggal)));
+  const upcoming = evt.filter(match).filter((e) => e.tanggal >= today).sort((a, b) => String(a.tanggal).localeCompare(String(b.tanggal)) || String(a.jamMulai || '').localeCompare(String(b.jamMulai || '')));
+  const past = evt.filter(match).filter((e) => e.tanggal < today).sort((a, b) => String(b.tanggal).localeCompare(String(a.tanggal)));
+  const galList = gal.filter(match);
+
+  const names = institutions.map((i) => i.namaLembaga).filter(Boolean).sort();
+  const Filter = (
+    <select aria-label="Filter lembaga" className="inp !w-auto" value={lembaga} onChange={(e) => { setLembaga(e.target.value); setAnnShow(6); setGalShow(12); }}>
+      <option value="Semua">Semua lembaga</option>
+      <option value="Umum">Umum (yayasan)</option>
+      {names.map((n) => <option key={n} value={n}>{n}</option>)}
+    </select>
+  );
+
+  const loading = <p className="flex items-center justify-center gap-2 py-8 text-sm text-slate-500"><Loader2 size={16} className="animate-spin" /> Memuat…</p>;
+
+  return (
+    <>
+      <section id="berita" className="mx-auto max-w-6xl px-4 py-16">
+        <h2 className="flex items-center justify-center gap-2 text-2xl font-bold"><Megaphone /> Berita &amp; Kegiatan</h2>
+        <div className="mt-6 flex justify-center">{Filter}</div>
+
+        <div className="mt-10 grid gap-8 lg:grid-cols-3">
+          <div className="space-y-5 lg:col-span-2">
+            <h3 className="font-bold text-brand-800">Pengumuman</h3>
+            {!loaded ? loading : annList.length === 0 && <p className="rounded-2xl border bg-white p-6 text-center text-sm text-slate-500">Belum ada pengumuman.</p>}
+            {annList.slice(0, annShow).map((a) => (
+              <article key={a.id} className="flex flex-col overflow-hidden rounded-2xl border bg-white sm:flex-row">
+                {a.gambarUrl && <img src={a.gambarUrl} alt="" loading="lazy" className="h-44 w-full object-cover sm:h-auto sm:w-48" />}
+                <div className="flex-1 p-5">
+                  <div className="flex flex-wrap items-center gap-2 text-xs text-slate-500">
+                    {a.sematkan === 'Ya' && <span className="flex items-center gap-1 font-semibold text-amber-600"><Pin size={12} /> Penting</span>}
+                    <Tag>{a.lembaga || 'Umum'}</Tag>
+                    <span>{tglPanjang(a.tanggal)}</span>
+                  </div>
+                  <h4 className="mt-2 font-bold">{a.judul}</h4>
+                  <p className="mt-1 line-clamp-3 whitespace-pre-line text-sm text-slate-600">{a.isi}</p>
+                  <button className="mt-3 text-sm font-semibold text-brand-700 hover:underline" onClick={() => setDetail(a)}>Baca selengkapnya</button>
+                </div>
+              </article>
+            ))}
+            {annList.length > annShow && (
+              <div className="text-center"><button className="btn-light" onClick={() => setAnnShow((n) => n + 6)}>Tampilkan lebih banyak</button></div>
+            )}
+          </div>
+
+          <aside className="space-y-4">
+            <h3 className="font-bold text-brand-800">Jadwal Kegiatan</h3>
+            {!loaded ? loading : upcoming.length === 0 && <p className="rounded-2xl border bg-white p-6 text-center text-sm text-slate-500">Belum ada kegiatan mendatang.</p>}
+            {upcoming.map((e) => <EventCard key={e.id} e={e} />)}
+            {past.length > 0 && (
+              <div>
+                <button className="text-sm font-semibold text-brand-700 hover:underline" onClick={() => setShowPast(!showPast)}>
+                  {showPast ? 'Sembunyikan' : 'Lihat'} kegiatan yang sudah lewat ({past.length})
+                </button>
+                {showPast && <div className="mt-3 space-y-4 opacity-70">{past.map((e) => <EventCard key={e.id} e={e} />)}</div>}
+              </div>
+            )}
+          </aside>
+        </div>
+      </section>
+
+      <section id="galeri" className="bg-white px-4 py-16">
+        <div className="mx-auto max-w-6xl">
+          <h2 className="flex items-center justify-center gap-2 text-2xl font-bold"><ImageIcon /> Galeri Kegiatan</h2>
+          <div className="mt-6 flex justify-center">{Filter}</div>
+          {!loaded ? loading : galList.length === 0 && <p className="mt-10 text-center text-slate-500">Belum ada foto.</p>}
+          <div className="mt-8 grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
+            {galList.slice(0, galShow).map((g, i) => (
+              <button key={g.id} onClick={() => setLight(i)} className="group relative aspect-square overflow-hidden rounded-xl bg-slate-100">
+                <img src={g.gambarUrl} alt={g.keterangan || 'Foto kegiatan'} loading="lazy" className="h-full w-full object-cover transition group-hover:scale-105" />
+                {g.keterangan && <span className="absolute inset-x-0 bottom-0 line-clamp-2 bg-gradient-to-t from-black/70 to-transparent p-2 text-left text-xs text-white">{g.keterangan}</span>}
+              </button>
+            ))}
+          </div>
+          {galList.length > galShow && (
+            <div className="mt-6 text-center"><button className="btn-light" onClick={() => setGalShow((n) => n + 12)}>Tampilkan lebih banyak</button></div>
+          )}
+        </div>
+      </section>
+
+      {detail && (
+        <Modal onClose={() => setDetail(null)}>
+          {detail.gambarUrl && <img src={detail.gambarUrl} alt="" className="max-h-80 w-full object-cover" />}
+          <div className="p-6">
+            <div className="flex flex-wrap items-center gap-2 text-xs text-slate-500"><Tag>{detail.lembaga || 'Umum'}</Tag><span>{tglPanjang(detail.tanggal)}</span></div>
+            <h3 className="mt-2 text-xl font-bold">{detail.judul}</h3>
+            <p className="mt-3 whitespace-pre-line leading-relaxed text-slate-700">{detail.isi}</p>
+          </div>
+        </Modal>
+      )}
+
+      {light !== null && galList[light] && (
+        <Lightbox list={galList.slice(0, galShow)} index={light} setIndex={setLight} />
+      )}
+    </>
+  );
+}
+
+function EventCard({ e }) {
+  const p = parts(e.tanggal);
+  return (
+    <div className="flex gap-4 rounded-2xl border bg-white p-4">
+      <div className="flex h-16 w-14 shrink-0 flex-col items-center justify-center rounded-xl bg-brand-700 text-white">
+        <span className="text-xl font-extrabold leading-none">{p ? p.d : '-'}</span>
+        <span className="text-xs uppercase">{p ? BULAN_SINGKAT[p.m - 1] : ''}</span>
+      </div>
+      <div className="min-w-0 flex-1 text-sm">
+        <p className="font-bold">{e.judul}</p>
+        <p className="mt-0.5 flex items-center gap-1.5 text-slate-500"><CalendarDays size={13} /> {hariTgl(e.tanggal)}</p>
+        {jam(e) && <p className="flex items-center gap-1.5 text-slate-500"><Clock size={13} /> {jam(e)}</p>}
+        {e.lokasi && <p className="flex items-center gap-1.5 text-slate-500"><MapPin size={13} /> {e.lokasi}</p>}
+        <div className="mt-1.5"><Tag>{e.lembaga || 'Umum'}</Tag></div>
+        {e.deskripsi && <p className="mt-2 whitespace-pre-line text-slate-600">{e.deskripsi}</p>}
+      </div>
+    </div>
+  );
+}
+
+function Lightbox({ list, index, setIndex }) {
+  const g = list[index];
+  const go = (d) => setIndex((i) => (i + d + list.length) % list.length);
+  useEffect(() => {
+    const h = (e) => {
+      if (e.key === 'Escape') setIndex(null);
+      if (e.key === 'ArrowLeft') go(-1);
+      if (e.key === 'ArrowRight') go(1);
+    };
+    window.addEventListener('keydown', h);
+    return () => window.removeEventListener('keydown', h);
+  });
+  if (!g) return null;
+  return (
+    <div className="fixed inset-0 z-50 flex flex-col items-center justify-center bg-black/90 p-4" onClick={() => setIndex(null)}>
+      <button className="absolute right-4 top-4 rounded-full bg-white/90 p-1.5" onClick={() => setIndex(null)} aria-label="Tutup"><X size={20} /></button>
+      <div className="flex w-full items-center justify-center gap-2" onClick={(e) => e.stopPropagation()}>
+        <button className="rounded-full bg-white/90 p-2" onClick={() => go(-1)} aria-label="Sebelumnya"><ChevronLeft size={20} /></button>
+        <img src={g.gambarUrl} alt={g.keterangan || ''} className="max-h-[75vh] min-w-0 max-w-full rounded-lg object-contain" />
+        <button className="rounded-full bg-white/90 p-2" onClick={() => go(1)} aria-label="Berikutnya"><ChevronRight size={20} /></button>
+      </div>
+      <p className="mt-3 max-w-xl text-center text-sm text-white" onClick={(e) => e.stopPropagation()}>
+        {g.keterangan} <span className="text-white/60">· {tglPanjang(g.tanggal)}{g.lembaga ? ` · ${g.lembaga}` : ''}</span>
+      </p>
+    </div>
+  );
+}

@@ -10,6 +10,7 @@ import {
 } from 'lucide-react';
 import { getDb } from '../lib/firebase';
 import LaporanKas from '../components/LaporanKas';
+import Konten from '../components/Konten';
 
 const DEFAULT_PROFILE = {
   namaYayasan: 'Yayasan Kita Bersama',
@@ -81,7 +82,7 @@ export default function HomePage() {
   }, [trx]);
 
   const shown = filter === 'Semua' ? institutions : institutions.filter((x) => x.kategori === filter);
-  const nav = [['Profil', '#profil'], ['Lembaga', '#lembaga'], ['Pengurus', '#pengurus'], ['Keuangan', '#keuangan'], ['Kontak', '#kontak']];
+  const nav = [['Profil', '#profil'], ['Lembaga', '#lembaga'], ['Berita', '#berita'], ['Galeri', '#galeri'], ['Pengurus', '#pengurus'], ['Keuangan', '#keuangan'], ['Kontak', '#kontak']];
 
   return (
     <div>
@@ -158,6 +159,8 @@ export default function HomePage() {
           )}
         </div>
       </section>
+
+      <Konten institutions={institutions} />
 
       <section id="pengurus" className="mx-auto max-w-6xl px-4 py-16">
         <h2 className="flex items-center justify-center gap-2 text-center text-2xl font-bold"><Users /> Struktur Kepengurusan</h2>
