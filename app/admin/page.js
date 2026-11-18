@@ -9,6 +9,7 @@ import {
 import { Building2, Landmark, Users, Wallet, LogOut, Loader2, Pencil, Trash2, Plus, Upload, Home } from 'lucide-react';
 import Link from 'next/link';
 import { getAuthInstance, getDb } from '../../lib/firebase';
+import { isAdminEmail } from '../../lib/admin';
 import { uploadImage } from '../../lib/upload';
 
 const KATEGORI = ['Masjid', 'Pendidikan', 'Sosial'];
@@ -215,6 +216,7 @@ export default function AdminPage() {
   useEffect(() => {
     const unsub = onAuthStateChanged(getAuthInstance(), (u) => {
       if (!u) router.replace('/login');
+      else if (!isAdminEmail(u.email)) { signOut(getAuthInstance()).finally(() => router.replace('/login')); }
       else { setUser(u); setReady(true); }
     });
     return () => unsub();
