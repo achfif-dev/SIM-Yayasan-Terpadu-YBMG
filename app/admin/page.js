@@ -1,16 +1,18 @@
 'use client';
 
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { onAuthStateChanged, signOut } from 'firebase/auth';
 import {
   addDoc, collection, deleteDoc, doc, getDoc, getDocs, serverTimestamp, setDoc, updateDoc,
 } from 'firebase/firestore';
-import { Building2, Landmark, Users, Wallet, LogOut, Loader2, Pencil, Trash2, Plus, Upload, Home } from 'lucide-react';
+import { Building2, Landmark, Users, Wallet, LogOut, Loader2, Pencil, Trash2, Plus, Upload, Home, Paperclip } from 'lucide-react';
 import Link from 'next/link';
 import { getAuthInstance, getDb } from '../../lib/firebase';
 import { isAdminEmail } from '../../lib/admin';
-import { uploadImage } from '../../lib/upload';
+import { uploadImage, deleteBukti } from '../../lib/upload';
+import { BuktiField } from '../../components/Bukti';
+import LaporanKas from '../../components/LaporanKas';
 
 const KATEGORI = ['Masjid', 'Pendidikan', 'Sosial'];
 const DIVISI = ['Pembina', 'Pengawas', 'Pengurus Harian', 'Unit'];
@@ -48,6 +50,7 @@ const TRX_FIELDS = [
   { name: 'unitId', label: 'Nama Lembaga (opsional)' },
   { name: 'jumlah', label: 'Jumlah (Rp)', type: 'number', required: true },
   { name: 'keterangan', label: 'Keterangan', type: 'textarea' },
+  { name: 'bukti', label: 'Bukti Transaksi (foto nota/kwitansi)', type: 'bukti' },
 ];
 
 const byUrutan = (a, b) => (a.urutan || 0) - (b.urutan || 0);
@@ -65,6 +68,7 @@ function Field({ f, value, onChange }) {
       </select>
     );
   }
+  if (f.type === 'bukti') return <BuktiField value={value} onChange={onChange} />;
   if (f.type === 'image') {
     const handle = async (e) => {
       const file = e.target.files?.[0];
@@ -90,7 +94,7 @@ function FormFields({ fields, form, setForm }) {
   return (
     <div className="grid gap-4 sm:grid-cols-2">
       {fields.map((f) => (
-        <div key={f.name} className={f.type === 'textarea' || f.type === 'image' ? 'sm:col-span-2' : ''}>
+        <div key={f.name} className={f.type === 'textarea' || f.type === 'image' || f.type === 'bukti' ? 'sm:col-span-2' : ''}>
           <label className="mb-1 block text-sm font-medium">{f.label}</label>
           <Field f={f} value={form[f.name]} onChange={(v) => setForm((p) => ({ ...p, [f.name]: v }))} />
         </div>
@@ -129,17 +133,21 @@ function ProfileTab() {
   );
 }
 
-function CrudTab({ col, fields, sort, renderItem, numberFields = [] }) {
+function CrudTab({ col, fields, sort, renderItem, numberFields = [], onItems }) {
   const [items, setItems] = useState([]);
   const [form, setForm] = useState(initOf(fields));
   const [editId, setEditId] = useState(null);
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState('');
+  const onItemsRef = useRef(onItems);
+  onItemsRef.current = onItems;
 
   const load = useCallback(async () => {
     try {
       const s = await getDocs(collection(getDb(), col));
-      setItems(s.docs.map((d) => ({ id: d.id, ...d.data() })).sort(sort));
+      const list = s.docs.map((d) => ({ id: d.id, ...d.data() })).sort(sort);
+      setItems(list);
+      onItemsRef.current?.(list);
     } catch (err) { setMsg('Gagal memuat: ' + err.message); }
   }, [col, sort]);
 
@@ -153,8 +161,14 @@ function CrudTab({ col, fields, sort, renderItem, numberFields = [] }) {
     const data = { ...form };
     numberFields.forEach((n) => { data[n] = Number(data[n]) || 0; });
     try {
-      if (editId) await updateDoc(doc(getDb(), col, editId), data);
-      else await addDoc(collection(getDb(), col), { ...data, createdAt: serverTimestamp() });
+      if (editId) {
+        const old = items.find((x) => x.id === editId);
+        await updateDoc(doc(getDb(), col, editId), data);
+        // hapus file bukti lama yang sudah diganti/dihapus
+        for (const f of fields.filter((x) => x.type === 'bukti')) {
+          if (old?.[f.name] && old[f.name] !== data[f.name]) await deleteBukti(old[f.name]);
+        }
+      } else await addDoc(collection(getDb(), col), { ...data, createdAt: serverTimestamp() });
       setMsg('Tersimpan ✓');
       reset();
       await load();
@@ -164,7 +178,12 @@ function CrudTab({ col, fields, sort, renderItem, numberFields = [] }) {
 
   const remove = async (id) => {
     if (!confirm('Hapus data ini?')) return;
-    try { await deleteDoc(doc(getDb(), col, id)); await load(); } catch (err) { setMsg('Gagal: ' + err.message); }
+    try {
+      const old = items.find((x) => x.id === id);
+      await deleteDoc(doc(getDb(), col, id));
+      for (const f of fields.filter((x) => x.type === 'bukti')) await deleteBukti(old?.[f.name]);
+      await load();
+    } catch (err) { setMsg('Gagal: ' + err.message); }
   };
 
   const edit = (it) => {
@@ -196,6 +215,21 @@ function CrudTab({ col, fields, sort, renderItem, numberFields = [] }) {
           </div>
         ))}
       </div>
+    </div>
+  );
+}
+
+function KasTab() {
+  const [trx, setTrx] = useState([]);
+  const [nama, setNama] = useState('Yayasan');
+  useEffect(() => {
+    getDoc(doc(getDb(), 'settings', 'profile')).then((s) => { if (s.exists() && s.data().namaYayasan) setNama(s.data().namaYayasan); }).catch(() => {});
+  }, []);
+  return (
+    <div className="space-y-6">
+      <CrudTab col="transactions" fields={TRX_FIELDS} sort={byTanggal} numberFields={['jumlah']} onItems={setTrx}
+        renderItem={(t) => (<><p className={`font-semibold ${t.tipe === 'masuk' ? 'text-emerald-700' : 'text-red-600'}`}>{t.tipe === 'masuk' ? '+' : '-'} {rupiah(t.jumlah)} · Kas {t.kategoriUnit} {t.bukti && <Paperclip size={12} className="ml-1 inline text-slate-400" />}</p><p className="truncate text-slate-500">{t.tanggal} · {t.keterangan}</p></>)} />
+      <div className="rounded-2xl bg-white p-6 shadow-sm"><LaporanKas trx={trx} namaYayasan={nama} /></div>
     </div>
   );
 }
@@ -256,10 +290,7 @@ export default function AdminPage() {
           <CrudTab col="board_members" fields={BOARD_FIELDS} sort={byUrutan} numberFields={['urutan']}
             renderItem={(m) => (<><p className="font-semibold">#{m.urutan} {m.nama}</p><p className="text-slate-500">{m.jabatan} · {m.divisi}</p></>)} />
         )}
-        {tab === 'kas' && (
-          <CrudTab col="transactions" fields={TRX_FIELDS} sort={byTanggal} numberFields={['jumlah']}
-            renderItem={(t) => (<><p className={`font-semibold ${t.tipe === 'masuk' ? 'text-emerald-700' : 'text-red-600'}`}>{t.tipe === 'masuk' ? '+' : '-'} {rupiah(t.jumlah)} · Kas {t.kategoriUnit}</p><p className="truncate text-slate-500">{t.tanggal} · {t.keterangan}</p></>)} />
-        )}
+        {tab === 'kas' && <KasTab />}
       </main>
     </div>
   );

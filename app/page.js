@@ -9,6 +9,7 @@ import {
   Wallet, Users, Menu, X, Star, ArrowDownCircle, ArrowUpCircle,
 } from 'lucide-react';
 import { getDb } from '../lib/firebase';
+import LaporanKas from '../components/LaporanKas';
 
 const DEFAULT_PROFILE = {
   namaYayasan: 'Yayasan Kita Bersama',
@@ -202,7 +203,8 @@ export default function HomePage() {
               );
             })}
           </div>
-          <p className="mt-6 text-center text-sm text-slate-500">Rekening donasi: <b>{profile.rekeningDonasi}</b></p>
+          <LaporanKas trx={trx} namaYayasan={profile.namaYayasan} />
+          <p className="mt-10 text-center text-sm text-slate-500">Rekening donasi: <b>{profile.rekeningDonasi}</b></p>
         </div>
       </section>
 
