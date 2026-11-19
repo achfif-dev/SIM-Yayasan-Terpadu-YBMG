@@ -6,7 +6,7 @@ import Link from 'next/link';
 import { onAuthStateChanged, signInWithEmailAndPassword, signInWithPopup, GoogleAuthProvider, sendEmailVerification, signOut } from 'firebase/auth';
 import { Lock, Loader2 } from 'lucide-react';
 import { getAuthInstance } from '../../lib/firebase';
-import { isAdminEmail } from '../../lib/admin';
+import { cekAdmin } from '../../lib/admin';
 
 const ERRORS = {
   'auth/invalid-api-key': 'API key Firebase tidak valid. Periksa Environment Variables di hosting lalu deploy ulang.',
@@ -35,11 +35,12 @@ export default function LoginPage() {
 
   // Sesi login tersimpan di browser: bila admin sudah masuk, langsung ke panel (tanpa mengetik ulang)
   useEffect(() => {
-    const unsub = onAuthStateChanged(getAuthInstance(), (u) => {
-      if (u && isAdminEmail(u.email) && u.emailVerified) router.replace('/admin');
-      else setChecking(false);
+    let batal = false;
+    const unsub = onAuthStateChanged(getAuthInstance(), async (u) => {
+      if (u && u.emailVerified && await cekAdmin(u)) { if (!batal) router.replace('/admin'); }
+      else if (!batal) setChecking(false);
     });
-    return () => unsub();
+    return () => { batal = true; unsub(); };
   }, [router]);
 
   const fail = (err) => {
@@ -49,7 +50,7 @@ export default function LoginPage() {
 
   // Tolak akun yang tidak ada di daftar admin
   const finish = async (cred) => {
-    if (!isAdminEmail(cred.user.email)) {
+    if (!(await cekAdmin(cred.user))) {
       await signOut(getAuthInstance());
       setError('Akun ini tidak terdaftar sebagai admin.');
       return;
