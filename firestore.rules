@@ -6,9 +6,34 @@ service cloud.firestore {
         && request.auth.token.email_verified == true
         && request.auth.token.email in ['achfif@gmail.com']; // ganti / tambah email admin
     }
-    match /{document=**} {
-      allow read: if true;
-      allow write: if isAdmin();
+
+    // Transaksi kas: jenis harus masuk/keluar, jumlah harus angka > 0
+    function validTrx() {
+      return request.resource.data.tipe in ['masuk', 'keluar']
+        && request.resource.data.jumlah is number
+        && request.resource.data.jumlah > 0;
     }
+
+    // Koleksi yang tampil di beranda: baca publik, tulis hanya admin
+    match /settings/{id}      { allow read: if true; allow write: if isAdmin(); }
+    match /institutions/{id}  { allow read: if true; allow write: if isAdmin(); }
+    match /board_members/{id} { allow read: if true; allow write: if isAdmin(); }
+    match /announcements/{id} { allow read: if true; allow write: if isAdmin(); }
+    match /events/{id}        { allow read: if true; allow write: if isAdmin(); }
+    match /gallery/{id}       { allow read: if true; allow write: if isAdmin(); }
+
+    match /transactions/{id} {
+      allow read: if true;
+      allow create, update: if isAdmin() && validTrx();
+      allow delete: if isAdmin();
+    }
+
+    // Bukti nota: boleh dibuka bila tahu ID-nya (get), tetapi daftar seluruh bukti (list) hanya admin
+    match /receipts/{id} {
+      allow get: if true;
+      allow list, write: if isAdmin();
+    }
+
+    // Koleksi lain yang tidak disebut di atas: ditolak (default)
   }
 }
