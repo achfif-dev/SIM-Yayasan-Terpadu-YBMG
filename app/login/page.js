@@ -1,9 +1,9 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { signInWithEmailAndPassword, signInWithPopup, GoogleAuthProvider, sendEmailVerification, signOut } from 'firebase/auth';
+import { onAuthStateChanged, signInWithEmailAndPassword, signInWithPopup, GoogleAuthProvider, sendEmailVerification, signOut } from 'firebase/auth';
 import { Lock, Loader2 } from 'lucide-react';
 import { getAuthInstance } from '../../lib/firebase';
 import { isAdminEmail } from '../../lib/admin';
@@ -31,6 +31,16 @@ export default function LoginPage() {
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+  const [checking, setChecking] = useState(true);
+
+  // Sesi login tersimpan di browser: bila admin sudah masuk, langsung ke panel (tanpa mengetik ulang)
+  useEffect(() => {
+    const unsub = onAuthStateChanged(getAuthInstance(), (u) => {
+      if (u && isAdminEmail(u.email) && u.emailVerified) router.replace('/admin');
+      else setChecking(false);
+    });
+    return () => unsub();
+  }, [router]);
 
   const fail = (err) => {
     console.error('Login error:', err?.code, err);
@@ -81,6 +91,10 @@ export default function LoginPage() {
       setLoading(false);
     }
   };
+
+  if (checking) {
+    return <main className="flex min-h-screen items-center justify-center bg-gradient-to-br from-brand-900 to-brand-600"><Loader2 className="animate-spin text-white" /></main>;
+  }
 
   return (
     <main className="flex min-h-screen items-center justify-center bg-gradient-to-br from-brand-900 to-brand-600 p-4">
