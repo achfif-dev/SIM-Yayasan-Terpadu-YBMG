@@ -7,6 +7,7 @@ import { getDb } from '../lib/firebase';
 import { optimizeUrl } from '../lib/cdn';
 import { CACHE_TTL, cached, useInView } from '../lib/hemat';
 import { BULAN, BULAN_SINGKAT } from '../lib/laporan';
+import KalenderBulanan from './KalenderBulanan';
 import { buatICS, googleKalenderUrl, jadwalPekan, teksWA, teksWAPekan, unduhICS, waUrl } from '../lib/kalender';
 import { KELOMPOK, berikutnya, berikutnyaTanpaLibur, pengecualianTeks, polaTeks, tglHijriTeks } from '../lib/rutin';
 
@@ -143,6 +144,11 @@ export default function Konten({ institutions = [], showBerita = true, showGaler
   const pekan = jadwalPekan(upcoming, rutin, { dari: today, hari: 7 });
   const opsiKal = { namaYayasan, dari: today };
 
+  // Data untuk kalender bulanan: aturan rutin aktif (termasuk yang jadwal terdekatnya sudah lewat) + kegiatan sekali jalan
+  const rutinKal = rtn.filter((r) => r.aktif !== 'Tidak').filter(match);
+  const evtKal = evt.filter(match);
+  const awalData = toStr(new Date(Date.now() - 30 * 86400000)); // sama dengan batas pengambilan data events
+
   const names = institutions.map((i) => i.namaLembaga).filter(Boolean).sort();
   const Filter = (
     <select aria-label="Filter lembaga" className="inp !w-auto" value={lembaga} onChange={(e) => { setLembaga(e.target.value); setAnnShow(6); setGalShow(12); }}>
@@ -161,6 +167,14 @@ export default function Konten({ institutions = [], showBerita = true, showGaler
 <section id="berita" className="mx-auto max-w-content px-4 py-16">
         <h2 className="flex items-center justify-center gap-2 text-2xl font-bold"><Megaphone /> Berita &amp; Kegiatan</h2>
         <div className="mt-6 flex justify-center">{Filter}</div>
+
+        {loaded && (evt.length > 0 || rtn.length > 0) && (
+          <div className="mt-10">
+            <h3 className="mb-4 flex items-center gap-2 font-bold text-brand-800"><CalendarDays size={18} /> Kalender Kegiatan</h3>
+            <KalenderBulanan tunggal={evtKal} rutin={rutinKal} hariIni={today} awalData={awalData}
+              aksi={(x) => <AksiKegiatan item={x.sumber} opsi={opsiKal} />} />
+          </div>
+        )}
 
         <div className="mt-10 grid gap-8 lg:grid-cols-3">
           <div className="space-y-5 lg:col-span-2">
