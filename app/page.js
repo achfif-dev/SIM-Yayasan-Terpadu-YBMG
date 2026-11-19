@@ -250,7 +250,7 @@ export default function HomePage() {
       </section>
       )}
 
-      <Konten institutions={institutions} showBerita={isYa(tpl.tampilBerita)} showGaleri={isYa(tpl.tampilGaleri)} />
+      <Konten namaYayasan={profile.namaYayasan} institutions={institutions} showBerita={isYa(tpl.tampilBerita)} showGaleri={isYa(tpl.tampilGaleri)} />
 
       {isYa(tpl.tampilPengurus) && (
       <section id="pengurus" className="mx-auto max-w-content px-4 py-16">
