@@ -53,6 +53,21 @@ Nama cloud dan preset berada di `NEXT_PUBLIC_*`, jadi siapa pun bisa mengunggah 
 - Logika perhitungan ada di `lib/rutin.js` (fungsi murni, tanpa Firebase).
 - **Wajib**: tempel ulang `firestore.rules` ke Firestore → Rules → Publish (ada aturan baru untuk `routine_events`); tanpa ini simpan/baca kegiatan rutin akan ditolak.
 
+## Kalender & WhatsApp
+- Tiap kegiatan (sekali jalan maupun rutin) di beranda punya tombol **Google Kalender**, **.ics** (Apple/Outlook/kalender HP) dan **WhatsApp**. Kegiatan rutin sederhana (harian, pekanan, 2 pekan, bulanan, tahunan Masehi) masuk kalender sebagai **acara berulang** (RRULE); yang tidak bisa dinyatakan RRULE (Hijriah, ada pengecualian/libur Ramadan, tanggal 29–30, 29 Februari) diurai menjadi tanggal-tanggal nyata untuk 12 bulan ke depan.
+- **Bagikan jadwal 7 hari ke WhatsApp** (di atas daftar Jadwal Kegiatan) membuat teks rapi berisi kegiatan sekali jalan + kemunculan kegiatan rutin pekan ini; **Semua ke kalender (.ics)** mengunduh seluruh kegiatan rutin sekaligus.
+- Zona waktu tetap WIB (Asia/Jakarta). Logika ada di `lib/kalender.js`.
+
+## Daftar admin dikelola dari panel
+- **Pemilik** = email di `NEXT_PUBLIC_ADMIN_EMAILS` dan di fungsi `isOwner()` pada `firestore.rules` (hanya dua tempat ini, diisi sekali). Pemilik selalu bisa masuk, jadi tidak bisa terkunci.
+- **Admin tambahan**: Admin → tab **Admin** (hanya tampil untuk pemilik) → masukkan email. Disimpan di koleksi `admins` (ID = email huruf kecil). Tanpa ubah `.env`/rules/deploy. Admin tambahan punya akses seperti pemilik, kecuali kelola admin. Syarat: punya akun Firebase Authentication dan emailnya terverifikasi.
+- **Wajib tempel ulang `firestore.rules`** (ada fungsi `isOwner()`, `isAdmin()` baru, dan aturan koleksi `admins`).
+
+## Cadangan & pemulihan (Admin → Cadangan)
+- **Unduh cadangan (.json)** untuk koleksi yang dipilih (pengaturan, lembaga, pengurus, berita, kegiatan, rutin, galeri, kas, bukti nota, riwayat kas; daftar admin khusus pemilik). Tanggal Firestore disimpan sebagai ISO dan dipulihkan lagi sebagai Timestamp. Muncul peringatan bila belum pernah/lebih dari 30 hari sejak cadangan terakhir dari perangkat itu.
+- **Pulihkan**: pilih berkas → tampil ringkasan jumlah per koleksi → ketik `PULIHKAN`. Dokumen ber-ID sama ditimpa, dokumen lain tidak dihapus; `audit_log` dan `admins` tidak dipulihkan. Pemulihan dicatat di Riwayat Kas.
+- Setiap dokumen yang dibaca = 1 pembacaan Firestore (gratis 50.000/hari). Logika di `lib/cadangan.js`.
+
 ## Konfigurasi tampilan (Admin → Tampilan)
 - Warna utama, warna latar, font judul/isi (Google Fonts), ukuran teks, lebar konten, sudut kartu, dan bagian beranda yang ditampilkan.
 - **Foto latar hero**: ganti latar hijau dengan foto; tepinya memudar (transparan) ke warna utama. Atur kejelasan foto, lebar pudar, lapisan warna, dan posisi fokus.

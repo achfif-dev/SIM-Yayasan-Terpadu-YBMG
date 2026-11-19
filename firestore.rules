@@ -1,10 +1,20 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
-    function isAdmin() {
+    // PEMILIK: satu-satunya tempat email ditulis di rules (samakan dengan NEXT_PUBLIC_ADMIN_EMAILS).
+    // Pemilik selalu punya akses penuh dan mengelola admin lain dari panel (tab "Admin").
+    function isOwner() {
       return request.auth != null
         && request.auth.token.email_verified == true
-        && request.auth.token.email in ['achfif@gmail.com']; // ganti / tambah email admin
+        && request.auth.token.email.lower() in ['achfif@gmail.com']; // ganti / tambah email pemilik
+    }
+
+    // ADMIN: pemilik, atau email yang terdaftar di koleksi `admins` (ID dokumen = email huruf kecil)
+    function isAdmin() {
+      return isOwner()
+        || (request.auth != null
+          && request.auth.token.email_verified == true
+          && exists(/databases/$(database)/documents/admins/$(request.auth.token.email.lower())));
     }
 
     // Transaksi kas: jenis harus masuk/keluar, jumlah harus angka > 0
@@ -21,6 +31,13 @@ service cloud.firestore {
     match /announcements/{id} { allow read: if true; allow write: if isAdmin(); }
     match /events/{id}        { allow read: if true; allow write: if isAdmin(); }
     match /gallery/{id}       { allow read: if true; allow write: if isAdmin(); }
+
+    // Daftar admin tambahan: tiap orang hanya boleh membaca dokumennya sendiri (untuk cek akses saat login);
+    // melihat seluruh daftar dan menambah/mencabut admin hanya untuk pemilik.
+    match /admins/{email} {
+      allow get: if request.auth != null && request.auth.token.email.lower() == email;
+      allow list, write: if isOwner();
+    }
 
     // Kegiatan rutin: 1 dokumen = 1 aturan pengulangan. Pengulangan harus salah satu dari daftar di bawah.
     match /routine_events/{id} {
