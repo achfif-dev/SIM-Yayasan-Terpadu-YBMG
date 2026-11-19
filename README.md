@@ -44,6 +44,15 @@ Nama cloud dan preset berada di `NEXT_PUBLIC_*`, jadi siapa pun bisa mengunggah 
 - Beranda hanya memuat 12 pengumuman terbaru, kegiatan mulai 30 hari terakhir, dan 24 foto terbaru. Tanpa Cloudinary foto disimpan di Firestore (±800–900 px); untuk galeri yang besar sebaiknya aktifkan Cloudinary.
 - Rules Firestore tidak perlu diubah (baca publik, tulis hanya admin).
 
+## Kegiatan rutin (berulang)
+- **Admin → Rutin**: catat kegiatan yang berulang **sekali saja** sebagai aturan (koleksi `routine_events`), bukan satu dokumen per tanggal. Pilihan pengulangan: setiap hari, setiap pekan (boleh beberapa hari, mis. Senin & Kamis), dua pekan sekali, bulanan menurut tanggal (mis. tanggal 1; tanggal 31 = akhir bulan), bulanan menurut pekan & hari (mis. Jumat pekan ke-1 / pekan terakhir), dan tahunan (tanggal + bulan, mis. 17 Agustus).
+- **Kalender Hijriah**: *Setiap bulan Hijriah* (satu atau beberapa tanggal, mis. `13,14,15` untuk puasa Ayyamul Bidh) dan *Setiap tahun Hijriah* (mis. 10 Muharram). Tanggal 30 dipakai sebagai hari terakhir bila bulannya hanya 29 hari. Perhitungan memakai kalender Umm al-Qura bawaan browser; karena penetapan Kemenag RI bisa berbeda sehari, ada pilihan **Koreksi kalender Hijriah** (sehari lebih lambat/cepat) per kegiatan. Tanggal Hijriah ikut tampil di kartu beranda.
+- **Pengecualian**: kolom *Tanggal ditiadakan* menerima tanggal tunggal dan rentang, dipisah koma/baris (`2026-12-25, 2026-12-28..2027-01-02`), dan sakelar **Ditiadakan selama bulan Ramadan**. Tanggal itu dilewati, dan beranda memberi catatan "Ditiadakan pada …" bila jadwal terdekat sedang libur.
+- Opsi: tanggal mulai/berakhir, jam, lokasi, lembaga, dan sakelar **Tampilkan di beranda** (nonaktifkan tanpa menghapus).
+- **Beranda → Berita & Kegiatan**: di bawah *Jadwal Kegiatan* muncul blok **Kegiatan Rutin** (dikelompokkan Harian/Pekanan/Bulanan/Tahunan) lengkap dengan pola ("Setiap Jumat pekan ke-1") dan tanggal berikutnya yang dihitung otomatis. Filter lembaga berlaku juga untuk blok ini.
+- Logika perhitungan ada di `lib/rutin.js` (fungsi murni, tanpa Firebase).
+- **Wajib**: tempel ulang `firestore.rules` ke Firestore → Rules → Publish (ada aturan baru untuk `routine_events`); tanpa ini simpan/baca kegiatan rutin akan ditolak.
+
 ## Konfigurasi tampilan (Admin → Tampilan)
 - Warna utama, warna latar, font judul/isi (Google Fonts), ukuran teks, lebar konten, sudut kartu, dan bagian beranda yang ditampilkan.
 - **Foto latar hero**: ganti latar hijau dengan foto; tepinya memudar (transparan) ke warna utama. Atur kejelasan foto, lebar pudar, lapisan warna, dan posisi fokus.
