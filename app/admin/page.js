@@ -6,7 +6,7 @@ import { onAuthStateChanged, signOut } from 'firebase/auth';
 import {
   addDoc, collection, deleteDoc, doc, getDoc, getDocs, limit, orderBy, query, serverTimestamp, setDoc, updateDoc,
 } from 'firebase/firestore';
-import { Building2, Landmark, Users, Wallet, LogOut, Loader2, Pencil, Trash2, Plus, Upload, Home, Paperclip, Megaphone, CalendarDays, Image as ImageIcon, Palette, RotateCcw } from 'lucide-react';
+import { Building2, Landmark, Users, Wallet, LogOut, Loader2, Pencil, Trash2, Plus, Upload, Home, Paperclip, Megaphone, CalendarDays, Image as ImageIcon, Palette, RotateCcw, Repeat } from 'lucide-react';
 import Link from 'next/link';
 import { getAuthInstance, getDb } from '../../lib/firebase';
 import { isAdminEmail } from '../../lib/admin';
@@ -17,6 +17,7 @@ import { DEFAULT_TAMPILAN, TAMPILAN_GROUPS, applyTheme, mergeTampilan } from '..
 import { clearCache } from '../../lib/hemat';
 import { simpanRingkasan } from '../../lib/ringkasan';
 import { isCloudinaryOn } from '../../lib/cdn';
+import { FREKUENSI, HARI_NAMA, BULAN_NAMA, BULAN_HIJRI, berikutnya, pengecualianTeks, polaTeks, toStr, validasiRutin } from '../../lib/rutin';
 
 const KATEGORI = ['Masjid', 'Pendidikan', 'Sosial'];
 const DIVISI = ['Pembina', 'Pengawas', 'Pengurus Harian', 'Unit'];
@@ -76,6 +77,40 @@ const EVT_FIELDS = [
   { name: 'lembaga', label: LEMBAGA_LABEL, type: 'lembaga' },
   { name: 'deskripsi', label: 'Deskripsi', type: 'textarea' },
 ];
+const ADA = (...k) => (f) => k.includes(f.frekuensi);
+const PEKAN_OPS = [{ value: '1', label: 'Pekan ke-1' }, { value: '2', label: 'Pekan ke-2' }, { value: '3', label: 'Pekan ke-3' }, { value: '4', label: 'Pekan ke-4' }, { value: '5', label: 'Pekan terakhir' }];
+const HARI_OPS = HARI_NAMA.map((label, i) => ({ value: String(i), label }));
+const BULAN_OPS = BULAN_NAMA.map((label, i) => ({ value: String(i + 1), label }));
+const BULAN_H_OPS = BULAN_HIJRI.map((label, i) => ({ value: String(i + 1), label }));
+const GESER_OPS = [
+  { value: '0', label: 'Ikuti kalender Umm al-Qura (bawaan)' },
+  { value: '-1', label: 'Sehari lebih lambat (sering cocok dgn penetapan Kemenag RI)' },
+  { value: '1', label: 'Sehari lebih cepat' },
+];
+const HIJRI = ADA('hijriah_bulanan', 'hijriah_tahunan');
+// `when` = field hanya tampil bila fungsi mengembalikan true (lihat FormFields)
+const RTN_FIELDS = [
+  { name: 'judul', label: 'Nama Kegiatan Rutin', required: true },
+  { name: 'frekuensi', label: 'Pengulangan', type: 'select', options: FREKUENSI },
+  { name: 'hari', label: 'Hari pelaksanaan', type: 'checks', options: HARI_OPS, init: [], when: ADA('mingguan') },
+  { name: 'pekanKe', label: 'Pekan ke-', type: 'select', options: PEKAN_OPS, when: ADA('bulanan_pekan') },
+  { name: 'hariPekan', label: 'Hari', type: 'select', options: HARI_OPS, init: '5', when: ADA('bulanan_pekan') },
+  { name: 'tanggal', label: 'Tanggal (angka terakhir bulan dipakai bila bulannya lebih pendek)', type: 'number', min: 1, init: 1, when: ADA('bulanan_tanggal', 'tahunan', 'hijriah_tahunan') },
+  { name: 'bulan', label: 'Bulan', type: 'select', options: BULAN_OPS, when: ADA('tahunan') },
+  { name: 'bulanH', label: 'Bulan Hijriah', type: 'select', options: BULAN_H_OPS, when: ADA('hijriah_tahunan') },
+  { name: 'tanggalDaftar', label: 'Tanggal Hijriah (1–30, pisahkan koma, mis. 13,14,15)', when: ADA('hijriah_bulanan') },
+  { name: 'geserHijri', label: 'Koreksi kalender Hijriah', type: 'select', options: GESER_OPS, when: HIJRI },
+  { name: 'mulai', label: 'Mulai berlaku (untuk "2 pekan sekali" = tanggal pelaksanaan pertama)', type: 'date', required: true },
+  { name: 'sampai', label: 'Berakhir pada (kosongkan = tanpa batas)', type: 'date' },
+  { name: 'jamMulai', label: 'Jam Mulai', type: 'time' },
+  { name: 'jamSelesai', label: 'Jam Selesai', type: 'time' },
+  { name: 'lokasi', label: 'Lokasi' },
+  { name: 'lembaga', label: LEMBAGA_LABEL, type: 'lembaga' },
+  { name: 'deskripsi', label: 'Deskripsi', type: 'textarea' },
+  { name: 'liburRamadan', label: 'Ditiadakan selama bulan Ramadan?', type: 'select', options: ['Tidak', 'Ya'] },
+  { name: 'pengecualian', label: 'Tanggal ditiadakan / libur (opsional). Contoh: 2026-12-25, 2026-12-28..2027-01-02', type: 'textarea', rows: 2 },
+  { name: 'aktif', label: 'Tampilkan di beranda', type: 'select', options: ['Ya', 'Tidak'] },
+];
 const GAL_FIELDS = [
   { name: 'gambarUrl', label: 'Foto', type: 'image', folder: 'galeri', maxSize: 800, quality: 0.65, required: true },
   { name: 'keterangan', label: 'Keterangan' },
@@ -86,8 +121,12 @@ const GAL_FIELDS = [
 const byUrutan = (a, b) => (a.urutan || 0) - (b.urutan || 0)
   || String(a.namaLembaga || a.nama || '').localeCompare(String(b.namaLembaga || b.nama || ''));
 const byTanggalAsc = (a, b) => String(a.tanggal || '').localeCompare(String(b.tanggal || ''));
+const byJudul = (a, b) => String(a.judul || '').localeCompare(String(b.judul || ''));
 const byTanggal = (a, b) => String(b.tanggal || '').localeCompare(String(a.tanggal || ''));
-const initOf = (fields) => Object.fromEntries(fields.map((f) => [f.name, f.type === 'select' ? f.options[0] : f.type === 'number' ? 0 : '']));
+const initOf = (fields) => Object.fromEntries(fields.map((f) => [f.name,
+  f.init !== undefined ? f.init
+    : f.type === 'select' ? (typeof f.options[0] === 'object' ? f.options[0].value : f.options[0])
+      : f.type === 'checks' ? [] : f.type === 'number' ? 0 : '']));
 
 function LembagaSelect({ value, onChange }) {
   const [opts, setOpts] = useState([]);
@@ -136,6 +175,19 @@ function Field({ f, value, onChange }) {
       </div>
     );
   }
+  if (f.type === 'checks') {
+    const cur = Array.isArray(value) ? value.map(String) : [];
+    const toggle = (v) => onChange(cur.includes(v) ? cur.filter((x) => x !== v) : [...cur, v]);
+    return (
+      <div className="flex flex-wrap gap-2">
+        {f.options.map((o) => (
+          <label key={o.value} className={`cursor-pointer rounded-lg border px-3 py-1.5 text-sm ${cur.includes(o.value) ? 'border-brand-700 bg-brand-700 text-white' : 'border-slate-300 bg-white hover:bg-slate-100'}`}>
+            <input type="checkbox" className="sr-only" checked={cur.includes(o.value)} onChange={() => toggle(o.value)} />{o.label}
+          </label>
+        ))}
+      </div>
+    );
+  }
   if (f.type === 'bukti') return <BuktiField value={value} onChange={onChange} />;
   if (f.type === 'image') {
     const handle = async (e) => {
@@ -162,8 +214,8 @@ function Field({ f, value, onChange }) {
 function FormFields({ fields, form, setForm, onFieldChange }) {
   return (
     <div className="grid gap-4 sm:grid-cols-2">
-      {fields.map((f) => (
-        <div key={f.name} className={f.type === 'textarea' || f.type === 'image' || f.type === 'bukti' ? 'sm:col-span-2' : ''}>
+      {fields.filter((f) => !f.when || f.when(form)).map((f) => (
+        <div key={f.name} className={['textarea', 'image', 'bukti', 'checks'].includes(f.type) ? 'sm:col-span-2' : ''}>
           <label className="mb-1 block text-sm font-medium">{f.label}</label>
           <Field f={f} value={form[f.name]} onChange={(v) => { onFieldChange?.(f, form[f.name], v); setForm((p) => ({ ...p, [f.name]: v })); }} />
         </div>
@@ -262,7 +314,7 @@ function TampilanTab() {
   );
 }
 
-function CrudTab({ col, fields, sort, renderItem, numberFields = [], onItems, onSaved, audit = false }) {
+function CrudTab({ col, fields, sort, renderItem, numberFields = [], onItems, onSaved, audit = false, validate }) {
   const [items, setItems] = useState([]);
   const [form, setForm] = useState(initOf(fields));
   const [editId, setEditId] = useState(null);
@@ -314,12 +366,17 @@ function CrudTab({ col, fields, sort, renderItem, numberFields = [], onItems, on
 
   const save = async (e) => {
     e.preventDefault();
-    const missing = fields.find((f) => f.required && f.type === 'image' && !form[f.name]);
+    const visible = fields.filter((f) => !f.when || f.when(form));
+    const missing = visible.find((f) => f.required && f.type === 'image' && !form[f.name]);
     if (missing) { setMsg(`${missing.label} wajib diisi`); return; }
-    const kecil = fields.find((f) => f.min !== undefined && !(Number(form[f.name]) >= f.min));
+    const kecil = visible.find((f) => f.min !== undefined && !(Number(form[f.name]) >= f.min));
     if (kecil) { setMsg(`${kecil.label} minimal ${kecil.min}`); return; }
+    const salah = validate?.(form);
+    if (salah) { setMsg(salah); return; }
     setBusy(true);
     const data = { ...form };
+    // buang isian milik field yang sedang tersembunyi (mis. hari saat pengulangan = bulanan)
+    fields.filter((f) => f.when && !f.when(form)).forEach((f) => { data[f.name] = initOf([f])[f.name]; });
     numberFields.forEach((n) => { data[n] = Number(data[n]) || 0; });
     // bukti yang sedang disimpan tidak boleh ikut dihapus oleh pembersihan unggahan tertunda
     fields.filter((x) => x.type === 'bukti').forEach((f) => pendingRef.current.delete(data[f.name]));
@@ -473,6 +530,7 @@ const TABS = [
   { id: 'kas', label: 'Kas', icon: Wallet },
   { id: 'berita', label: 'Berita', icon: Megaphone },
   { id: 'kegiatan', label: 'Kegiatan', icon: CalendarDays },
+  { id: 'rutin', label: 'Rutin', icon: Repeat },
   { id: 'galeri', label: 'Galeri', icon: ImageIcon },
 ];
 
@@ -534,6 +592,21 @@ export default function AdminPage() {
         {tab === 'kegiatan' && (
           <CrudTab col="events" fields={EVT_FIELDS} sort={byTanggalAsc}
             renderItem={(e) => (<><p className="font-semibold">{e.judul}</p><p className="truncate text-slate-500">{e.tanggal}{e.jamMulai ? ` · ${e.jamMulai}` : ''} · {e.lembaga || 'Umum'}{e.lokasi ? ` · ${e.lokasi}` : ''}</p></>)} />
+        )}
+        {tab === 'rutin' && (
+          <>
+            <p className="rounded-xl bg-brand-50 p-4 text-sm text-brand-900">
+              Isi aturan pengulangan <b>sekali saja</b> (mis. “Setiap Jumat”, “Setiap tanggal 1”, “Tiap 10 Muharram”). Libur sesekali atau selama Ramadan cukup dicatat di kolom pengecualian. Beranda menghitung tanggal berikutnya otomatis, jadi tidak perlu membuat kegiatan baru tiap pekan/bulan/tahun.
+            </p>
+            <CrudTab col="routine_events" fields={RTN_FIELDS} sort={byJudul} numberFields={['tanggal']} validate={validasiRutin}
+              renderItem={(r) => {
+                const nx = berikutnya(r, toStr(new Date()));
+                return (<>
+                  <p className="font-semibold">{r.aktif === 'Tidak' && '🚫 '}{r.judul} <span className="text-xs font-normal text-brand-700">({polaTeks(r)})</span></p>
+                  <p className="truncate text-slate-500">{r.jamMulai ? `${r.jamMulai} · ` : ''}{r.lembaga || 'Umum'}{r.lokasi ? ` · ${r.lokasi}` : ''} · {nx ? `berikutnya ${nx}` : 'sudah berakhir / belum dimulai'}{pengecualianTeks(r) ? ` · ${pengecualianTeks(r)}` : ''}</p>
+                </>);
+              }} />
+          </>
         )}
         {tab === 'galeri' && (
           <CrudTab col="gallery" fields={GAL_FIELDS} sort={byTanggal}
