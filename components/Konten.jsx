@@ -2,11 +2,12 @@
 
 import { useEffect, useRef, useState } from 'react';
 import { collection, doc, getDoc, getDocs, limit, orderBy, query, startAfter, where } from 'firebase/firestore';
-import { CalendarDays, Clock, Image as ImageIcon, MapPin, Megaphone, Pin, X, ChevronLeft, ChevronRight, Loader2, Repeat } from 'lucide-react';
+import { CalendarDays, Clock, Image as ImageIcon, MapPin, Megaphone, Pin, X, ChevronLeft, ChevronRight, Loader2, Repeat, CalendarPlus, Share2 } from 'lucide-react';
 import { getDb } from '../lib/firebase';
 import { optimizeUrl } from '../lib/cdn';
 import { CACHE_TTL, cached, useInView } from '../lib/hemat';
 import { BULAN, BULAN_SINGKAT } from '../lib/laporan';
+import { buatICS, googleKalenderUrl, jadwalPekan, teksWA, teksWAPekan, unduhICS, waUrl } from '../lib/kalender';
 import { KELOMPOK, berikutnya, berikutnyaTanpaLibur, pengecualianTeks, polaTeks, tglHijriTeks } from '../lib/rutin';
 
 const HARI = ['Minggu', 'Senin', 'Selasa', 'Rabu', 'Kamis', 'Jumat', 'Sabtu'];
@@ -39,7 +40,7 @@ function Modal({ onClose, children }) {
 
 const Tag = ({ children }) => <span className="rounded-full bg-brand-100 px-2.5 py-0.5 text-xs font-semibold text-brand-800">{children}</span>;
 
-export default function Konten({ institutions = [], showBerita = true, showGaleri = true }) {
+export default function Konten({ institutions = [], showBerita = true, showGaleri = true, namaYayasan = 'Yayasan' }) {
   const [ann, setAnn] = useState([]);
   const [evt, setEvt] = useState([]);
   const [gal, setGal] = useState([]);
@@ -139,6 +140,9 @@ export default function Konten({ institutions = [], showBerita = true, showGaler
     .map((r) => ({ ...r, next: berikutnya(r, today) })).filter((r) => r.next)
     .sort((a, b) => a.next.localeCompare(b.next) || String(a.jamMulai || '').localeCompare(String(b.jamMulai || '')));
 
+  const pekan = jadwalPekan(upcoming, rutin, { dari: today, hari: 7 });
+  const opsiKal = { namaYayasan, dari: today };
+
   const names = institutions.map((i) => i.namaLembaga).filter(Boolean).sort();
   const Filter = (
     <select aria-label="Filter lembaga" className="inp !w-auto" value={lembaga} onChange={(e) => { setLembaga(e.target.value); setAnnShow(6); setGalShow(12); }}>
@@ -183,9 +187,16 @@ export default function Konten({ institutions = [], showBerita = true, showGaler
           </div>
 
           <aside className="space-y-4">
-            <h3 className="font-bold text-brand-800">Jadwal Kegiatan</h3>
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <h3 className="font-bold text-brand-800">Jadwal Kegiatan</h3>
+              {loaded && pekan.length > 0 && (
+                <a className="btn-light !px-2.5 !py-1 !text-xs" target="_blank" rel="noopener noreferrer" href={waUrl(teksWAPekan(pekan, { ...opsiKal, hari: 7 }))}>
+                  <Share2 size={13} /> Bagikan jadwal 7 hari ke WhatsApp
+                </a>
+              )}
+            </div>
             {!loaded ? loading : upcoming.length === 0 && <p className="rounded-card border bg-white p-6 text-center text-sm text-slate-500">Belum ada kegiatan mendatang.</p>}
-            {upcoming.map((e) => <EventCard key={e.id} e={e} />)}
+            {upcoming.map((e) => <EventCard key={e.id} e={e} opsi={opsiKal} />)}
             {past.length > 0 && (
               <div>
                 <button className="text-sm font-semibold text-brand-700 hover:underline" onClick={() => setShowPast(!showPast)}>
@@ -196,7 +207,12 @@ export default function Konten({ institutions = [], showBerita = true, showGaler
             )}
             {loaded && rutin.length > 0 && (
               <div className="space-y-4 pt-4">
-                <h3 className="flex items-center gap-2 font-bold text-brand-800"><Repeat size={16} /> Kegiatan Rutin</h3>
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <h3 className="flex items-center gap-2 font-bold text-brand-800"><Repeat size={16} /> Kegiatan Rutin</h3>
+                  <button type="button" className="btn-light !px-2.5 !py-1 !text-xs" onClick={() => unduhICS(buatICS(rutin, { ...opsiKal, kalender: 'Kegiatan Rutin' }), 'kegiatan-rutin.ics')}>
+                    <CalendarPlus size={13} /> Semua ke kalender (.ics)
+                  </button>
+                </div>
                 {KELOMPOK.map((k) => {
                   const list = rutin.filter((r) => k.anggota.includes(r.frekuensi));
                   if (!list.length) return null;
@@ -204,7 +220,7 @@ export default function Konten({ institutions = [], showBerita = true, showGaler
                   return (
                     <div key={k.id} className="space-y-3">
                       <p className="text-xs font-bold uppercase tracking-widest text-slate-500">{k.label}</p>
-                      {list.slice(0, batas).map((r) => <RutinCard key={r.id} r={r} today={today} />)}
+                      {list.slice(0, batas).map((r) => <RutinCard key={r.id} r={r} today={today} opsi={opsiKal} />)}
                       {list.length > batas && <button className="text-sm font-semibold text-brand-700 hover:underline" onClick={() => setRtnAll(true)}>Tampilkan semua {k.label.toLowerCase()} ({list.length})</button>}
                     </div>
                   );
@@ -255,7 +271,21 @@ export default function Konten({ institutions = [], showBerita = true, showGaler
   );
 }
 
-function EventCard({ e }) {
+// Tombol tambah ke kalender + bagikan WhatsApp untuk satu kegiatan / aturan rutin
+function AksiKegiatan({ item, opsi }) {
+  const g = googleKalenderUrl(item, opsi);
+  if (!g) return null;
+  const aksi = 'inline-flex items-center gap-1 rounded-lg border border-slate-300 bg-white px-2.5 py-1 text-xs font-medium text-slate-700 hover:bg-slate-100';
+  return (
+    <div className="mt-3 flex flex-wrap gap-2">
+      <a className={aksi} href={g} target="_blank" rel="noopener noreferrer"><CalendarPlus size={13} /> Google Kalender</a>
+      <button type="button" className={aksi} onClick={() => unduhICS(buatICS([item], opsi), 'kegiatan.ics')}>.ics (Apple/Outlook)</button>
+      <a className={aksi} href={waUrl(teksWA(item, opsi))} target="_blank" rel="noopener noreferrer"><Share2 size={13} /> WhatsApp</a>
+    </div>
+  );
+}
+
+function EventCard({ e, opsi }) {
   const p = parts(e.tanggal);
   return (
     <div className="flex gap-4 rounded-card border bg-white p-4">
@@ -270,12 +300,13 @@ function EventCard({ e }) {
         {e.lokasi && <p className="flex items-center gap-1.5 text-slate-500"><MapPin size={13} /> {e.lokasi}</p>}
         <div className="mt-1.5"><Tag>{e.lembaga || 'Umum'}</Tag></div>
         {e.deskripsi && <p className="mt-2 whitespace-pre-line text-slate-600">{e.deskripsi}</p>}
+        {opsi && e.tanggal >= opsi.dari && <AksiKegiatan item={e} opsi={opsi} />}
       </div>
     </div>
   );
 }
 
-function RutinCard({ r, today }) {
+function RutinCard({ r, today, opsi }) {
   const hariIni = r.next === today;
   const hijriah = String(r.frekuensi).startsWith('hijriah');
   // Jadwal normal yang jatuh pada tanggal pengecualian (libur) → beri tahu pengunjung
@@ -296,6 +327,7 @@ function RutinCard({ r, today }) {
       {!libur && r.liburRamadan === 'Ya' && pengecualianTeks(r) && <p className="mt-1 text-xs text-slate-400">{pengecualianTeks(r)}</p>}
       <div className="mt-1.5"><Tag>{r.lembaga || 'Umum'}</Tag></div>
       {r.deskripsi && <p className="mt-2 whitespace-pre-line text-slate-600">{r.deskripsi}</p>}
+      {opsi && <AksiKegiatan item={r} opsi={opsi} />}
     </div>
   );
 }
