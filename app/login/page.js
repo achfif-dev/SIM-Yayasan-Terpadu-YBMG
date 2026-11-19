@@ -3,7 +3,7 @@
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { signInWithEmailAndPassword, signInWithPopup, GoogleAuthProvider, signOut } from 'firebase/auth';
+import { signInWithEmailAndPassword, signInWithPopup, GoogleAuthProvider, sendEmailVerification, signOut } from 'firebase/auth';
 import { Lock, Loader2 } from 'lucide-react';
 import { getAuthInstance } from '../../lib/firebase';
 import { isAdminEmail } from '../../lib/admin';
@@ -42,6 +42,14 @@ export default function LoginPage() {
     if (!isAdminEmail(cred.user.email)) {
       await signOut(getAuthInstance());
       setError('Akun ini tidak terdaftar sebagai admin.');
+      return;
+    }
+    // firestore.rules hanya mengizinkan tulis bila email sudah terverifikasi
+    if (!cred.user.emailVerified) {
+      const email = cred.user.email;
+      try { await sendEmailVerification(cred.user); } catch (e) { /* abaikan */ }
+      await signOut(getAuthInstance());
+      setError(`Email ${email} belum terverifikasi. Tautan verifikasi sudah dikirim — klik tautan itu, lalu masuk lagi.`);
       return;
     }
     router.push('/admin');
