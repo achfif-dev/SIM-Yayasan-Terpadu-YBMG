@@ -4,7 +4,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { onAuthStateChanged, signOut } from 'firebase/auth';
 import {
-  addDoc, collection, deleteDoc, doc, getDoc, getDocs, serverTimestamp, setDoc, updateDoc,
+  addDoc, collection, deleteDoc, doc, getDoc, getDocs, limit, orderBy, query, serverTimestamp, setDoc, updateDoc,
 } from 'firebase/firestore';
 import { Building2, Landmark, Users, Wallet, LogOut, Loader2, Pencil, Trash2, Plus, Upload, Home, Paperclip, Megaphone, CalendarDays, Image as ImageIcon, Palette, RotateCcw } from 'lucide-react';
 import Link from 'next/link';
@@ -39,6 +39,7 @@ const INST_FIELDS = [
   { name: 'logoUrl', label: 'Logo Lembaga', type: 'image', folder: 'logos' },
   { name: 'kepalaUnit', label: 'Kepala Unit' },
   { name: 'programUnggulan', label: 'Program Unggulan', type: 'textarea' },
+  { name: 'urutan', label: 'Nomor Urut Tampil', type: 'number' },
 ];
 const BOARD_FIELDS = [
   { name: 'nama', label: 'Nama', required: true },
@@ -82,7 +83,8 @@ const GAL_FIELDS = [
   { name: 'lembaga', label: LEMBAGA_LABEL, type: 'lembaga' },
 ];
 
-const byUrutan = (a, b) => (a.urutan || 0) - (b.urutan || 0);
+const byUrutan = (a, b) => (a.urutan || 0) - (b.urutan || 0)
+  || String(a.namaLembaga || a.nama || '').localeCompare(String(b.namaLembaga || b.nama || ''));
 const byTanggalAsc = (a, b) => String(a.tanggal || '').localeCompare(String(b.tanggal || ''));
 const byTanggal = (a, b) => String(b.tanggal || '').localeCompare(String(a.tanggal || ''));
 const initOf = (fields) => Object.fromEntries(fields.map((f) => [f.name, f.type === 'select' ? f.options[0] : f.type === 'number' ? 0 : '']));
@@ -157,13 +159,13 @@ function Field({ f, value, onChange }) {
   return <input type={f.type || 'text'} className="inp" {...base} min={f.min} onChange={(e) => onChange(f.type === 'number' ? e.target.value : e.target.value)} />;
 }
 
-function FormFields({ fields, form, setForm }) {
+function FormFields({ fields, form, setForm, onFieldChange }) {
   return (
     <div className="grid gap-4 sm:grid-cols-2">
       {fields.map((f) => (
         <div key={f.name} className={f.type === 'textarea' || f.type === 'image' || f.type === 'bukti' ? 'sm:col-span-2' : ''}>
           <label className="mb-1 block text-sm font-medium">{f.label}</label>
-          <Field f={f} value={form[f.name]} onChange={(v) => setForm((p) => ({ ...p, [f.name]: v }))} />
+          <Field f={f} value={form[f.name]} onChange={(v) => { onFieldChange?.(f, form[f.name], v); setForm((p) => ({ ...p, [f.name]: v })); }} />
         </div>
       ))}
     </div>
@@ -260,7 +262,7 @@ function TampilanTab() {
   );
 }
 
-function CrudTab({ col, fields, sort, renderItem, numberFields = [], onItems, onSaved }) {
+function CrudTab({ col, fields, sort, renderItem, numberFields = [], onItems, onSaved, audit = false }) {
   const [items, setItems] = useState([]);
   const [form, setForm] = useState(initOf(fields));
   const [editId, setEditId] = useState(null);
@@ -270,6 +272,31 @@ function CrudTab({ col, fields, sort, renderItem, numberFields = [], onItems, on
   onItemsRef.current = onItems;
   const onSavedRef = useRef(onSaved);
   onSavedRef.current = onSaved;
+
+  // Bukti yang sudah terunggah tetapi belum tersimpan di transaksi: hapus bila diganti/dibatalkan agar tidak jadi dokumen yatim
+  const pendingRef = useRef(new Set());
+  const trackBukti = (f, prev, next) => {
+    if (f.type !== 'bukti' || prev === next) return;
+    if (prev && pendingRef.current.has(prev)) { pendingRef.current.delete(prev); deleteBukti(prev); }
+    if (next) pendingRef.current.add(next);
+  };
+  const discardPending = () => {
+    const list = [...pendingRef.current];
+    pendingRef.current.clear();
+    list.forEach((v) => { deleteBukti(v); });
+  };
+  useEffect(() => () => discardPending(), []); // tinggalkan tab = batalkan unggahan yang belum disimpan
+
+  // Jejak audit (hanya bila audit=true): jejak tambah/ubah/hapus, tidak bisa diubah (lihat firestore.rules)
+  const me = () => getAuthInstance().currentUser?.email || '';
+  const pick = (o) => (o ? Object.fromEntries(fields.map((f) => [f.name, o[f.name] ?? null])) : null);
+  const tulisLog = async (aksi, docId, sebelum, sesudah) => {
+    if (!audit) return true;
+    try {
+      await addDoc(collection(getDb(), 'audit_log'), { koleksi: col, aksi, docId, sebelum: pick(sebelum), sesudah: pick(sesudah), oleh: me(), waktu: serverTimestamp() });
+      return true;
+    } catch (err) { console.error('Gagal mencatat riwayat:', err); return false; }
+  };
 
   const load = useCallback(async () => {
     try {
@@ -294,17 +321,25 @@ function CrudTab({ col, fields, sort, renderItem, numberFields = [], onItems, on
     setBusy(true);
     const data = { ...form };
     numberFields.forEach((n) => { data[n] = Number(data[n]) || 0; });
+    // bukti yang sedang disimpan tidak boleh ikut dihapus oleh pembersihan unggahan tertunda
+    fields.filter((x) => x.type === 'bukti').forEach((f) => pendingRef.current.delete(data[f.name]));
     try {
+      const stamp = { updatedAt: serverTimestamp(), updatedBy: me() };
+      let logOk;
       if (editId) {
         const old = items.find((x) => x.id === editId);
-        await updateDoc(doc(getDb(), col, editId), data);
+        await updateDoc(doc(getDb(), col, editId), { ...data, ...stamp });
         // hapus file bukti lama yang sudah diganti/dihapus
         for (const f of fields.filter((x) => x.type === 'bukti')) {
           if (old?.[f.name] && old[f.name] !== data[f.name]) await deleteBukti(old[f.name]);
         }
-      } else await addDoc(collection(getDb(), col), { ...data, createdAt: serverTimestamp() });
+        logOk = await tulisLog('ubah', editId, old, data);
+      } else {
+        const ref = await addDoc(collection(getDb(), col), { ...data, createdAt: serverTimestamp(), createdBy: me(), ...stamp });
+        logOk = await tulisLog('tambah', ref.id, null, data);
+      }
       clearCache();
-      setMsg('Tersimpan ✓');
+      setMsg(logOk ? 'Tersimpan ✓' : 'Tersimpan ✓ (riwayat perubahan gagal dicatat)');
       reset();
       const list = await load();
       if (list && onSavedRef.current) await onSavedRef.current(list);
@@ -318,13 +353,17 @@ function CrudTab({ col, fields, sort, renderItem, numberFields = [], onItems, on
       const old = items.find((x) => x.id === id);
       await deleteDoc(doc(getDb(), col, id));
       for (const f of fields.filter((x) => x.type === 'bukti')) await deleteBukti(old?.[f.name]);
+      await tulisLog('hapus', id, old, null);
       clearCache();
       const list = await load();
       if (list && onSavedRef.current) await onSavedRef.current(list);
     } catch (err) { setMsg('Gagal: ' + err.message); }
   };
 
+  const cancel = () => { discardPending(); reset(); };
+
   const edit = (it) => {
+    discardPending();
     setEditId(it.id);
     setForm({ ...initOf(fields), ...Object.fromEntries(fields.map((f) => [f.name, it[f.name] ?? initOf(fields)[f.name]])) });
     window.scrollTo({ top: 0, behavior: 'smooth' });
@@ -334,10 +373,10 @@ function CrudTab({ col, fields, sort, renderItem, numberFields = [], onItems, on
     <div className="space-y-6">
       <form onSubmit={save} className="space-y-5 rounded-2xl bg-white p-6 shadow-sm">
         <h3 className="font-bold">{editId ? 'Edit Data' : 'Tambah Data'}</h3>
-        <FormFields fields={fields} form={form} setForm={setForm} />
+        <FormFields fields={fields} form={form} setForm={setForm} onFieldChange={trackBukti} />
         <div className="flex flex-wrap items-center gap-3">
           <button className="btn" disabled={busy}>{busy ? <Loader2 size={14} className="animate-spin" /> : <Plus size={14} />} {editId ? 'Update' : 'Tambah'}</button>
-          {editId && <button type="button" className="btn-light" onClick={reset}>Batal</button>}
+          {editId && <button type="button" className="btn-light" onClick={cancel}>Batal</button>}
           <span className="text-sm text-slate-500">{msg}</span>
         </div>
       </form>
@@ -353,6 +392,47 @@ function CrudTab({ col, fields, sort, renderItem, numberFields = [], onItems, on
           </div>
         ))}
       </div>
+    </div>
+  );
+}
+
+// Riwayat perubahan transaksi kas (koleksi audit_log, tidak bisa diubah/dihapus)
+function AuditList() {
+  const [rows, setRows] = useState(null);
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState('');
+  const load = async () => {
+    setBusy(true);
+    setErr('');
+    try {
+      const s = await getDocs(query(collection(getDb(), 'audit_log'), orderBy('waktu', 'desc'), limit(30)));
+      setRows(s.docs.map((d) => ({ id: d.id, ...d.data() })));
+    } catch (e) { setErr('Gagal memuat riwayat: ' + e.message); }
+    setBusy(false);
+  };
+  const ringkas = (x) => `${x.tipe === 'masuk' ? '+' : '-'}${rupiah(x.jumlah)} · Kas ${x.kategoriUnit} · ${x.tanggal}${x.keterangan ? ` · ${x.keterangan}` : ''}`;
+  const waktu = (t) => (t?.seconds ? new Date(t.seconds * 1000).toLocaleString('id-ID') : '');
+  return (
+    <div className="space-y-3 rounded-2xl bg-white p-4 text-sm shadow-sm">
+      <div className="flex flex-wrap items-center gap-3">
+        <button type="button" className="btn-light" onClick={load} disabled={busy}>
+          {busy && <Loader2 size={14} className="animate-spin" />} {rows ? 'Muat ulang riwayat' : 'Lihat riwayat perubahan kas'}
+        </button>
+        {err && <span className="text-red-600">{err}</span>}
+      </div>
+      {rows && (rows.length === 0
+        ? <p className="text-slate-500">Belum ada riwayat.</p>
+        : (
+          <ul className="divide-y">
+            {rows.map((r) => (
+              <li key={r.id} className="py-2">
+                <p className="font-semibold capitalize">{r.aksi} <span className="font-normal normal-case text-slate-500">· {r.oleh} · {waktu(r.waktu)}</span></p>
+                {r.sebelum && <p className="text-slate-500">Sebelum: {ringkas(r.sebelum)}</p>}
+                {r.sesudah && <p>Sesudah: {ringkas(r.sesudah)}</p>}
+              </li>
+            ))}
+          </ul>
+        ))}
     </div>
   );
 }
@@ -377,8 +457,9 @@ function KasTab() {
         <button type="button" className="btn-light" disabled={!listed} onClick={() => sync(trx)}>Bangun ulang ringkasan</button>
         <span className="text-slate-500">{syncMsg || 'Ringkasan beranda diperbarui otomatis tiap transaksi disimpan/dihapus. Klik tombol ini sekali setelah pembaruan pertama.'}</span>
       </div>
-      <CrudTab col="transactions" fields={TRX_FIELDS} sort={byTanggal} numberFields={['jumlah']} onItems={(l) => { setTrx(l); setListed(true); }} onSaved={sync}
+      <CrudTab col="transactions" fields={TRX_FIELDS} sort={byTanggal} numberFields={['jumlah']} onItems={(l) => { setTrx(l); setListed(true); }} onSaved={sync} audit
         renderItem={(t) => (<><p className={`font-semibold ${t.tipe === 'masuk' ? 'text-emerald-700' : 'text-red-600'}`}>{t.tipe === 'masuk' ? '+' : '-'} {rupiah(t.jumlah)} · Kas {t.kategoriUnit} {t.bukti && <Paperclip size={12} className="ml-1 inline text-slate-400" />}</p><p className="truncate text-slate-500">{t.tanggal} · {t.keterangan}</p></>)} />
+      <AuditList />
       <div className="rounded-2xl bg-white p-6 shadow-sm"><LaporanKas trx={trx} namaYayasan={nama} /></div>
     </div>
   );
@@ -438,7 +519,7 @@ export default function AdminPage() {
         {tab === 'profil' && <ProfileTab />}
         {tab === 'tampilan' && <TampilanTab />}
         {tab === 'lembaga' && (
-          <CrudTab col="institutions" fields={INST_FIELDS} sort={byUrutan}
+          <CrudTab col="institutions" fields={INST_FIELDS} sort={byUrutan} numberFields={['urutan']}
             renderItem={(i) => (<><p className="font-semibold">{i.namaLembaga} <span className="text-xs text-brand-700">({i.kategori})</span></p><p className="truncate text-slate-500">{i.programUnggulan}</p></>)} />
         )}
         {tab === 'pengurus' && (
