@@ -53,6 +53,11 @@ Nama cloud dan preset berada di `NEXT_PUBLIC_*`, jadi siapa pun bisa mengunggah 
 - Logika perhitungan ada di `lib/rutin.js` (fungsi murni, tanpa Firebase).
 - **Wajib**: tempel ulang `firestore.rules` ke Firestore → Rules → Publish (ada aturan baru untuk `routine_events`); tanpa ini simpan/baca kegiatan rutin akan ditolak.
 
+## Kalender bulanan di beranda
+- Di **Berita & Kegiatan** muncul **Kalender Kegiatan** (grid bulan, pekan mulai Minggu) yang menggabungkan kegiatan sekali jalan (titik/label biru) dan kegiatan rutin (kuning) dalam satu tampilan. Ketuk tanggal untuk melihat rincian di panel samping/bawah, lengkap dengan tanggal Hijriah dan tombol Google Kalender/.ics/WhatsApp.
+- Hari yang **ditiadakan** (pengecualian/libur Ramadan) tetap tercantum di rincian dengan coretan dan lencana "Ditiadakan", tetapi tidak dihitung di grid.
+- HP menampilkan titik penanda per tanggal; layar lebar menampilkan judul singkat (maks. 2 + "+n lagi"). Navigasi bulan: mundur hingga bulan data sekali jalan yang dimuat (30 hari terakhir), maju hingga 12 bulan; kegiatan rutin dihitung untuk bulan mana pun. Filter lembaga berlaku. Logika di `lib/bulan.js`, tampilan di `components/KalenderBulanan.jsx`.
+
 ## Kalender & WhatsApp
 - Tiap kegiatan (sekali jalan maupun rutin) di beranda punya tombol **Google Kalender**, **.ics** (Apple/Outlook/kalender HP) dan **WhatsApp**. Kegiatan rutin sederhana (harian, pekanan, 2 pekan, bulanan, tahunan Masehi) masuk kalender sebagai **acara berulang** (RRULE); yang tidak bisa dinyatakan RRULE (Hijriah, ada pengecualian/libur Ramadan, tanggal 29–30, 29 Februari) diurai menjadi tanggal-tanggal nyata untuk 12 bulan ke depan.
 - **Bagikan jadwal 7 hari ke WhatsApp** (di atas daftar Jadwal Kegiatan) membuat teks rapi berisi kegiatan sekali jalan + kemunculan kegiatan rutin pekan ini; **Semua ke kalender (.ics)** mengunduh seluruh kegiatan rutin sekaligus.
