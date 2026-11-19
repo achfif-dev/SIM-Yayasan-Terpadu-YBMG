@@ -34,6 +34,12 @@ service cloud.firestore {
       allow list, write: if isAdmin();
     }
 
+    // Riwayat perubahan kas: hanya admin yang bisa baca/tambah; tidak bisa diubah atau dihapus
+    match /audit_log/{id} {
+      allow read, create: if isAdmin();
+      allow update, delete: if false;
+    }
+
     // Koleksi lain yang tidak disebut di atas: ditolak (default)
   }
 }

@@ -25,6 +25,19 @@ Gambar (logo/foto) otomatis dikompres ke maks. 320px dan disimpan di Firestore.
 - Tempel ulang isi `firestore.rules` ke Firestore → Rules, lalu Publish.
 - Disarankan juga mengaktifkan **App Check** (reCAPTCHA) di Firebase Console untuk menekan penyalahgunaan kuota.
 
+## Riwayat perubahan kas (audit)
+- Setiap transaksi yang ditambah/diubah/dihapus dicatat di koleksi `audit_log` (siapa, kapan, nilai sebelum & sesudah). Log hanya bisa dibaca admin dan **tidak bisa diubah atau dihapus** (lihat `firestore.rules`). Lihat di **Admin → Kas → Lihat riwayat perubahan kas**.
+- Dokumen yang disimpan lewat admin kini juga membawa `createdBy`, `updatedAt`, `updatedBy`.
+- Bukti nota yang diunggah tetapi tidak jadi disimpan (diganti, dibatalkan, atau pindah tab) otomatis dihapus dari `receipts`.
+
+## Berita, galeri & urutan lembaga
+- Berita dan galeri memuat data terbaru dulu (12 item). Bila filter lembaga tidak menemukan apa pun di data itu, tombol **Muat ... lebih lama** mengambil halaman berikutnya (tanpa indeks tambahan).
+- Lembaga kini punya **Nomor Urut Tampil** (kosong = 0, lalu urut nama).
+- Cache browser melewati data > ±2 juta karakter agar tidak gagal diam-diam; aktifkan Cloudinary bila galeri besar.
+
+## Mengamankan preset Cloudinary (unsigned)
+Nama cloud dan preset berada di `NEXT_PUBLIC_*`, jadi siapa pun bisa mengunggah memakai preset itu. Di Cloudinary → Settings → Upload → preset, batasi: folder tetap, format yang diizinkan (jpg/png/webp), ukuran file maksimum, dan aktifkan moderasi/quota. Jangan memakai preset itu untuk hal lain.
+
 ## Berita & kegiatan
 - **Admin → Berita / Kegiatan / Galeri**: kelola pengumuman (koleksi `announcements`), jadwal kegiatan (`events`), dan foto galeri (`gallery`). Setiap item bisa dikaitkan ke satu lembaga (dipilih dari daftar Lembaga) atau dikosongkan untuk "Umum".
 - **Beranda**: bagian *Berita & Kegiatan* (pengumuman, dengan opsi sematkan "Penting", plus jadwal kegiatan mendatang dan arsip yang sudah lewat) dan *Galeri Kegiatan* (grid foto dengan lightbox). Satu filter lembaga berlaku untuk keduanya.
