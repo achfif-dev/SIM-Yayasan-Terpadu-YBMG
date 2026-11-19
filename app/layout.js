@@ -3,7 +3,7 @@ import { THEME_BOOT_SCRIPT } from '../lib/tampilan';
 
 export const metadata = {
   title: 'Sistem Informasi Yayasan Terpadu',
-  description: 'Sistem informasi manajemen yayasan: Masjid, Pendidikan, dan Sosial.',
+  description: 'Sistem informasi manajemen yayasan: keagamaan, sosial, dan kemanusiaan.',
 };
 
 export default function RootLayout({ children }) {

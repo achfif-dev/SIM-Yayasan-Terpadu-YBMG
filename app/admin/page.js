@@ -19,9 +19,11 @@ import { DEFAULT_TAMPILAN, TAMPILAN_GROUPS, applyTheme, mergeTampilan } from '..
 import { clearCache } from '../../lib/hemat';
 import { simpanRingkasan } from '../../lib/ringkasan';
 import { isCloudinaryOn } from '../../lib/cdn';
+import { BIDANG, normBidang } from '../../lib/bidang';
+import { JENIS_SUB, USAHA_DI, blokirHapus, opsiLembaga, siapkanLembaga, susunLembaga, urutkanLembaga, validasiKas, validasiLembaga } from '../../lib/lembaga';
 import { FREKUENSI, HARI_NAMA, BULAN_NAMA, BULAN_HIJRI, berikutnya, pengecualianTeks, polaTeks, toStr, validasiRutin } from '../../lib/rutin';
 
-const KATEGORI = ['Masjid', 'Pendidikan', 'Sosial'];
+const KATEGORI = BIDANG; // keagamaan, sosial, kemanusiaan (sesuai AD/ART)
 const DIVISI = ['Pembina', 'Pengawas', 'Pengurus Harian', 'Unit'];
 const rupiah = (n) => new Intl.NumberFormat('id-ID', { style: 'currency', currency: 'IDR', maximumFractionDigits: 0 }).format(n || 0);
 
@@ -36,8 +38,10 @@ const PROFILE_FIELDS = [
   { name: 'rekeningDonasi', label: 'Rekening Donasi' },
 ];
 const INST_FIELDS = [
-  { name: 'namaLembaga', label: 'Nama Lembaga', required: true },
-  { name: 'kategori', label: 'Kategori', type: 'select', options: KATEGORI },
+  { name: 'namaLembaga', label: 'Nama Lembaga / Sub Unit', required: true },
+  { name: 'indukId', label: 'Sub unit dari (kosongkan = lembaga utama)', type: 'induk', init: '' },
+  { name: 'jenis', label: 'Jenis sub unit', type: 'select', options: JENIS_SUB, init: 'Unit', when: (f) => !!f.indukId },
+  { name: 'kategori', label: 'Bidang (menentukan kas)', type: 'select', options: KATEGORI, norm: normBidang, when: (f) => !f.indukId },
   { name: 'deskripsi', label: 'Deskripsi', type: 'textarea' },
   { name: 'logoUrl', label: 'Logo Lembaga', type: 'image', folder: 'logos' },
   { name: 'kepalaUnit', label: 'Kepala Unit' },
@@ -54,8 +58,8 @@ const BOARD_FIELDS = [
 const TRX_FIELDS = [
   { name: 'tanggal', label: 'Tanggal', type: 'date', required: true },
   { name: 'tipe', label: 'Jenis', type: 'select', options: ['masuk', 'keluar'] },
-  { name: 'kategoriUnit', label: 'Unit (Kas)', type: 'select', options: KATEGORI },
-  { name: 'unitId', label: 'Nama Lembaga (opsional)' },
+  { name: 'kategoriUnit', label: 'Bidang (Kas)', type: 'select', options: KATEGORI, norm: normBidang },
+  { name: 'unitId', label: 'Lembaga / Sub Unit (opsional, untuk rincian laporan)', type: 'lembaga', kosong: 'Tanpa rincian lembaga' },
   { name: 'jumlah', label: 'Jumlah (Rp)', type: 'number', required: true, min: 1 },
   { name: 'keterangan', label: 'Keterangan', type: 'textarea' },
   { name: 'bukti', label: 'Bukti Transaksi (foto nota/kwitansi)', type: 'bukti' },
@@ -130,18 +134,37 @@ const initOf = (fields) => Object.fromEntries(fields.map((f) => [f.name,
     : f.type === 'select' ? (typeof f.options[0] === 'object' ? f.options[0].value : f.options[0])
       : f.type === 'checks' ? [] : f.type === 'number' ? 0 : '']));
 
-function LembagaSelect({ value, onChange }) {
+// Pilihan lembaga (nilai tersimpan = nama). Sub unit tampil menjorok di bawah induknya.
+function LembagaSelect({ value, onChange, kosong = 'Umum (seluruh yayasan)' }) {
   const [opts, setOpts] = useState([]);
   useEffect(() => {
     getDocs(collection(getDb(), 'institutions'))
-      .then((snap) => setOpts(snap.docs.map((d) => d.data().namaLembaga).filter(Boolean).sort()))
+      .then((snap) => setOpts(opsiLembaga(snap.docs.map((d) => ({ id: d.id, ...d.data() })))))
       .catch(() => {});
   }, []);
-  const list = value && !opts.includes(value) ? [...opts, value] : opts;
+  const ada = (n) => opts.some((o) => o.nama === n);
   return (
     <select className="inp" value={value ?? ''} onChange={(e) => onChange(e.target.value)}>
-      <option value="">Umum (seluruh yayasan)</option>
-      {list.map((n) => <option key={n} value={n}>{n}</option>)}
+      <option value="">{kosong}</option>
+      {opts.map((o) => <option key={o.nama} value={o.nama}>{o.label}</option>)}
+      {value && !ada(value) && <option value={value}>{value}</option>}
+    </select>
+  );
+}
+
+// Pilih lembaga induk (hanya lembaga utama) untuk sub unit; nilai tersimpan = ID dokumen
+function IndukSelect({ value, onChange }) {
+  const [opts, setOpts] = useState([]);
+  useEffect(() => {
+    getDocs(collection(getDb(), 'institutions'))
+      .then((snap) => setOpts(susunLembaga(snap.docs.map((d) => ({ id: d.id, ...d.data() }))).map((u) => ({ id: u.id, nama: u.namaLembaga, kategori: u.kategori }))))
+      .catch(() => {});
+  }, []);
+  return (
+    <select className="inp" value={value ?? ''} onChange={(e) => onChange(e.target.value)}>
+      <option value="">— Lembaga utama (bukan sub unit) —</option>
+      {opts.map((o) => <option key={o.id} value={o.id}>{o.nama} ({o.kategori})</option>)}
+      {value && !opts.some((o) => o.id === value) && <option value={value}>(induk tidak ditemukan)</option>}
     </select>
   );
 }
@@ -149,7 +172,8 @@ function LembagaSelect({ value, onChange }) {
 function Field({ f, value, onChange }) {
   const [up, setUp] = useState(false);
   const base = { value: value ?? '', required: f.required };
-  if (f.type === 'lembaga') return <LembagaSelect value={value} onChange={onChange} />;
+  if (f.type === 'lembaga') return <LembagaSelect value={value} onChange={onChange} kosong={f.kosong} />;
+  if (f.type === 'induk') return <IndukSelect value={value} onChange={onChange} />;
   if (f.type === 'textarea') return <textarea rows={f.rows || 3} className="inp" {...base} onChange={(e) => onChange(e.target.value)} />;
   if (f.type === 'select') {
     return (
@@ -316,7 +340,8 @@ function TampilanTab() {
   );
 }
 
-function CrudTab({ col, fields, sort, renderItem, numberFields = [], onItems, onSaved, audit = false, validate }) {
+// susun(list) = urutan khusus seluruh daftar; siapkan(data, daftar) = ubah data sebelum disimpan; cegahHapus(item, daftar) = pesan bila tak boleh dihapus
+function CrudTab({ col, fields, sort, renderItem, numberFields = [], onItems, onSaved, audit = false, validate, susun, siapkan, cegahHapus }) {
   const [items, setItems] = useState([]);
   const [form, setForm] = useState(initOf(fields));
   const [editId, setEditId] = useState(null);
@@ -355,12 +380,13 @@ function CrudTab({ col, fields, sort, renderItem, numberFields = [], onItems, on
   const load = useCallback(async () => {
     try {
       const s = await getDocs(collection(getDb(), col));
-      const list = s.docs.map((d) => ({ id: d.id, ...d.data() })).sort(sort);
+      const mentah = s.docs.map((d) => ({ id: d.id, ...d.data() }));
+      const list = susun ? susun(mentah) : mentah.sort(sort);
       setItems(list);
       onItemsRef.current?.(list);
       return list;
     } catch (err) { setMsg('Gagal memuat: ' + err.message); return null; }
-  }, [col, sort]);
+  }, [col, sort, susun]);
 
   useEffect(() => { load(); }, [load]);
 
@@ -373,13 +399,14 @@ function CrudTab({ col, fields, sort, renderItem, numberFields = [], onItems, on
     if (missing) { setMsg(`${missing.label} wajib diisi`); return; }
     const kecil = visible.find((f) => f.min !== undefined && !(Number(form[f.name]) >= f.min));
     if (kecil) { setMsg(`${kecil.label} minimal ${kecil.min}`); return; }
-    const salah = validate?.(form);
+    const salah = validate?.(form, editId, items);
     if (salah) { setMsg(salah); return; }
     setBusy(true);
     const data = { ...form };
     // buang isian milik field yang sedang tersembunyi (mis. hari saat pengulangan = bulanan)
     fields.filter((f) => f.when && !f.when(form)).forEach((f) => { data[f.name] = initOf([f])[f.name]; });
     numberFields.forEach((n) => { data[n] = Number(data[n]) || 0; });
+    if (siapkan) Object.assign(data, siapkan(data, items));
     // bukti yang sedang disimpan tidak boleh ikut dihapus oleh pembersihan unggahan tertunda
     fields.filter((x) => x.type === 'bukti').forEach((f) => pendingRef.current.delete(data[f.name]));
     try {
@@ -407,6 +434,8 @@ function CrudTab({ col, fields, sort, renderItem, numberFields = [], onItems, on
   };
 
   const remove = async (id) => {
+    const blok = cegahHapus?.(items.find((x) => x.id === id) || {}, items);
+    if (blok) { setMsg(blok); window.scrollTo({ top: 0, behavior: 'smooth' }); return; }
     if (!confirm('Hapus data ini?')) return;
     try {
       const old = items.find((x) => x.id === id);
@@ -424,7 +453,8 @@ function CrudTab({ col, fields, sort, renderItem, numberFields = [], onItems, on
   const edit = (it) => {
     discardPending();
     setEditId(it.id);
-    setForm({ ...initOf(fields), ...Object.fromEntries(fields.map((f) => [f.name, it[f.name] ?? initOf(fields)[f.name]])) });
+    // `norm` mengubah nilai lama (mis. kategori "Masjid") menjadi nilai sekarang saat form dibuka
+    setForm({ ...initOf(fields), ...Object.fromEntries(fields.map((f) => { const v = it[f.name] ?? initOf(fields)[f.name]; return [f.name, f.norm ? f.norm(v) : v]; })) });
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
@@ -501,6 +531,7 @@ function KasTab() {
   const [listed, setListed] = useState(false);
   const [syncMsg, setSyncMsg] = useState('');
   const [nama, setNama] = useState('Yayasan');
+  const [inst, setInst] = useState([]); // lembaga & sub unit: untuk validasi penanda dan rincian laporan
   // Perbarui dokumen ringkasan yang dibaca beranda (1 baca, bukan seluruh transaksi)
   const sync = async (list) => {
     setSyncMsg('Memperbarui ringkasan beranda…');
@@ -509,6 +540,7 @@ function KasTab() {
   };
   useEffect(() => {
     getDoc(doc(getDb(), 'settings', 'profile')).then((s) => { if (s.exists() && s.data().namaYayasan) setNama(s.data().namaYayasan); }).catch(() => {});
+    getDocs(collection(getDb(), 'institutions')).then((s) => setInst(s.docs.map((d) => ({ id: d.id, ...d.data() })))).catch(() => {});
   }, []);
   return (
     <div className="space-y-6">
@@ -517,9 +549,10 @@ function KasTab() {
         <span className="text-slate-500">{syncMsg || 'Ringkasan beranda diperbarui otomatis tiap transaksi disimpan/dihapus. Klik tombol ini sekali setelah pembaruan pertama.'}</span>
       </div>
       <CrudTab col="transactions" fields={TRX_FIELDS} sort={byTanggal} numberFields={['jumlah']} onItems={(l) => { setTrx(l); setListed(true); }} onSaved={sync} audit
-        renderItem={(t) => (<><p className={`font-semibold ${t.tipe === 'masuk' ? 'text-emerald-700' : 'text-red-600'}`}>{t.tipe === 'masuk' ? '+' : '-'} {rupiah(t.jumlah)} · Kas {t.kategoriUnit} {t.bukti && <Paperclip size={12} className="ml-1 inline text-slate-400" />}</p><p className="truncate text-slate-500">{t.tanggal} · {t.keterangan}</p></>)} />
+        validate={(f) => validasiKas(f, inst)}
+        renderItem={(t) => (<><p className={`font-semibold ${t.tipe === 'masuk' ? 'text-emerald-700' : 'text-red-600'}`}>{t.tipe === 'masuk' ? '+' : '-'} {rupiah(t.jumlah)} · Kas {normBidang(t.kategoriUnit)}{t.unitId ? ` · ${t.unitId}` : ''} {t.bukti && <Paperclip size={12} className="ml-1 inline text-slate-400" />}</p><p className="truncate text-slate-500">{t.tanggal} · {t.keterangan}</p></>)} />
       <AuditList />
-      <div className="rounded-2xl bg-white p-6 shadow-sm"><LaporanKas trx={trx} namaYayasan={nama} /></div>
+      <div className="rounded-2xl bg-white p-6 shadow-sm"><LaporanKas trx={trx} namaYayasan={nama} lembaga={inst} /></div>
     </div>
   );
 }
@@ -584,8 +617,23 @@ export default function AdminPage() {
         {tab === 'profil' && <ProfileTab />}
         {tab === 'tampilan' && <TampilanTab />}
         {tab === 'lembaga' && (
-          <CrudTab col="institutions" fields={INST_FIELDS} sort={byUrutan} numberFields={['urutan']}
-            renderItem={(i) => (<><p className="font-semibold">{i.namaLembaga} <span className="text-xs text-brand-700">({i.kategori})</span></p><p className="truncate text-slate-500">{i.programUnggulan}</p></>)} />
+          <>
+            <p className="rounded-xl bg-brand-50 p-4 text-sm text-brand-900">
+              Yayasan bergerak di bidang <b>keagamaan, sosial, dan kemanusiaan</b>; tiap lembaga masuk ke salah satu bidang itu (kolom “Bidang”), dan bidang inilah yang menentukan kas. Lembaga utama dapat memiliki <b>sub unit</b>: pilih lembaga induknya di kolom “Sub unit dari”; sub unit memakai kas induknya. Jenis <b>Usaha</b> hanya untuk sub unit di bawah lembaga bidang <b>{USAHA_DI.join(' / ')}</b> (mis. Masjid), karena yayasan tidak untuk usaha. Nama harus unik karena dipakai sebagai penanda di berita, kegiatan, dan kas.
+            </p>
+            <CrudTab col="institutions" fields={INST_FIELDS} sort={byUrutan} susun={urutkanLembaga} numberFields={['urutan']}
+              siapkan={siapkanLembaga} validate={(f, id, list) => validasiLembaga(f, list, id)} cegahHapus={blokirHapus}
+              renderItem={(i) => (
+                <div className={i._anak ? 'ml-5 border-l-2 border-brand-100 pl-3' : ''}>
+                  <p className="font-semibold">
+                    {i._anak && <span className="mr-1 text-slate-400">↳</span>}{i.namaLembaga}{' '}
+                    <span className="text-xs text-brand-700">({i._anak ? 'Sub unit' : i.kategori})</span>
+                    {i.jenis === 'Usaha' && <span className="ml-2 rounded-full bg-amber-100 px-2 py-0.5 text-xs font-semibold text-amber-800">Usaha</span>}
+                  </p>
+                  <p className="truncate text-slate-500">{i.programUnggulan}</p>
+                </div>
+              )} />
+          </>
         )}
         {tab === 'pengurus' && (
           <CrudTab col="board_members" fields={BOARD_FIELDS} sort={byUrutan} numberFields={['urutan']}

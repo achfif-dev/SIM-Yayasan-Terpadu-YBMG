@@ -5,11 +5,13 @@ import Image from 'next/image';
 import Link from 'next/link';
 import { collection, doc, getDoc, getDocs } from 'firebase/firestore';
 import {
-  Landmark, GraduationCap, HeartHandshake, Building2, Phone, Mail, MapPin,
+  Landmark, Heart, HeartHandshake, Building2, Phone, Mail, MapPin,
   Wallet, Users, Menu, X, Star, ArrowDownCircle, ArrowUpCircle, Loader2,
 } from 'lucide-react';
 import { getDb } from '../lib/firebase';
 import LaporanKas from '../components/LaporanKas';
+import { susunLembaga } from '../lib/lembaga';
+import { BIDANG, gabungBidang, normBidang } from '../lib/bidang';
 import Konten from '../components/Konten';
 import SocialIcons from '../components/SocialIcons';
 import { DEFAULT_TAMPILAN, HERO_PAD, applyTheme, heroPhotoStyle, heroSrc, isYa, mergeTampilan, socialLinks } from '../lib/tampilan';
@@ -19,7 +21,7 @@ import { CACHE_TTL, cached, useInView } from '../lib/hemat';
 const DEFAULT_PROFILE = {
   namaYayasan: 'Yayasan Kita Bersama',
   tagline: 'Melayani umat melalui ibadah, pendidikan, dan kepedulian sosial',
-  deskripsi: 'Yayasan yang menaungi Masjid, Lembaga Pendidikan, dan Lembaga Sosial untuk kemaslahatan umat. Data yayasan dapat diubah melalui panel admin.',
+  deskripsi: 'Yayasan yang bergerak di bidang keagamaan, sosial, dan kemanusiaan untuk kemaslahatan umat. Data yayasan dapat diubah melalui panel admin.',
   logoUrl: '',
   alamat: 'Alamat yayasan belum diisi',
   telepon: '-',
@@ -27,9 +29,9 @@ const DEFAULT_PROFILE = {
   rekeningDonasi: '-',
 };
 
-const UNITS = ['Masjid', 'Pendidikan', 'Sosial'];
+const UNITS = BIDANG; // keagamaan, sosial, kemanusiaan (sesuai AD/ART; lihat lib/bidang.js)
 const DIVISI = ['Pembina', 'Pengawas', 'Pengurus Harian', 'Unit'];
-const ICONS = { Masjid: Landmark, Pendidikan: GraduationCap, Sosial: HeartHandshake };
+const ICONS = { Keagamaan: Landmark, Sosial: HeartHandshake, Kemanusiaan: Heart };
 const fetchTrx = async () => {
   const t = await getDocs(collection(getDb(), 'transactions'));
   return t.docs.map((x) => ({ id: x.id, ...x.data() }));
@@ -139,22 +141,22 @@ export default function HomePage() {
     const s = Object.fromEntries(UNITS.map((u) => [u, { masuk: 0, keluar: 0 }]));
     if (trx) {
       trx.forEach((t) => {
-        const k = t.kategoriUnit;
+        const k = normBidang(t.kategoriUnit); // data lama: Masjid→Keagamaan, Pendidikan→Sosial
         if (!s[k]) return;
         if (t.tipe === 'masuk') s[k].masuk += Number(t.jumlah) || 0;
         else s[k].keluar += Number(t.jumlah) || 0;
       });
     } else if (ringkasan?.total) {
-      UNITS.forEach((u) => {
-        s[u] = { masuk: Number(ringkasan.total[u]?.masuk) || 0, keluar: Number(ringkasan.total[u]?.keluar) || 0 };
-      });
+      Object.assign(s, gabungBidang(ringkasan.total)); // ringkasan lama (nama kategori lama) ikut digabung ke bidang sekarang
     }
     return s;
   }, [trx, ringkasan]);
   // '…' saat memuat, '—' saat gagal (jangan tampilkan Rp 0 yang menyesatkan)
   const kasText = (v) => (kasError ? '—' : kasReady ? rupiah(v) : '…');
 
-  const shown = filter === 'Semua' ? institutions : institutions.filter((x) => x.kategori === filter);
+  // lembaga utama beserta sub unitnya (sub unit tampil di dalam kartu induk)
+  const tree = susunLembaga(institutions);
+  const shown = filter === 'Semua' ? tree : tree.filter((x) => x.kategori === filter);
   const nav = [
     ['Profil', '#profil', 'tampilProfil'], ['Lembaga', '#lembaga', 'tampilLembaga'], ['Berita', '#berita', 'tampilBerita'],
     ['Galeri', '#galeri', 'tampilGaleri'], ['Pengurus', '#pengurus', 'tampilPengurus'], ['Keuangan', '#keuangan', 'tampilKeuangan'], ['Kontak', '#kontak'],
@@ -240,6 +242,22 @@ export default function HomePage() {
                     {x.kepalaUnit && <p className="mt-3 text-sm"><span className="text-slate-500">Kepala Unit:</span> <b>{x.kepalaUnit}</b></p>}
                     {x.programUnggulan && (
                       <p className="mt-2 flex items-start gap-1.5 text-sm text-slate-600"><Star size={14} className="mt-0.5 shrink-0 text-amber-500" />{x.programUnggulan}</p>
+                    )}
+                    {x.anak.length > 0 && (
+                      <div className="mt-4 border-t pt-3">
+                        <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Unit di bawahnya</p>
+                        <ul className="mt-2 space-y-2">
+                          {x.anak.map((a) => (
+                            <li key={a.id} className="flex items-start gap-2 text-sm">
+                              <span className={`mt-0.5 shrink-0 rounded-full px-2 py-0.5 text-[11px] font-semibold ${a.jenis === 'Usaha' ? 'bg-amber-100 text-amber-800' : 'bg-brand-100 text-brand-800'}`}>{a.jenis === 'Usaha' ? 'Usaha' : 'Unit'}</span>
+                              <span className="min-w-0">
+                                <b>{a.namaLembaga}</b>{a.kepalaUnit && <span className="text-slate-500"> · {a.kepalaUnit}</span>}
+                                {a.deskripsi && <span className="block text-slate-600">{a.deskripsi}</span>}
+                              </span>
+                            </li>
+                          ))}
+                        </ul>
+                      </div>
                     )}
                   </article>
                 );

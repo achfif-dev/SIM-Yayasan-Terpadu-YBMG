@@ -50,7 +50,8 @@ const Legend = () => (
   </div>
 );
 
-export default function LaporanKas({ trx, namaYayasan = 'Yayasan' }) {
+// `lembaga` (opsional) = daftar lembaga/sub unit; bila diberikan, tampil tabel rincian per lembaga & sub unit (termasuk Usaha)
+export default function LaporanKas({ trx, namaYayasan = 'Yayasan', lembaga = [] }) {
   const years = useMemo(() => availableYears(trx), [trx]);
   const [unit, setUnit] = useState('Semua');
   const [tahunSel, setTahunSel] = useState(null); // null = tahun terbaru yang ada datanya
@@ -59,7 +60,7 @@ export default function LaporanKas({ trx, namaYayasan = 'Yayasan' }) {
   const [bukti, setBukti] = useState(null);
 
   const tahun = tahunSel ?? years[0] ?? 'Semua';
-  const report = useMemo(() => buildReport(trx, { unit, tahun, bulan }), [trx, unit, tahun, bulan]);
+  const report = useMemo(() => buildReport(trx, { unit, tahun, bulan, lembaga }), [trx, unit, tahun, bulan, lembaga]);
   const meta = { namaYayasan, unit, tahun, bulan };
   const rows = report.rows;
 
@@ -68,11 +69,11 @@ export default function LaporanKas({ trx, namaYayasan = 'Yayasan' }) {
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
           <h3 className="text-xl font-bold">Laporan Kas</h3>
-          <p className="text-sm text-slate-500">{unit === 'Semua' ? 'Seluruh unit' : `Kas ${unit}`} · {periodLabel(tahun, bulan)}</p>
+          <p className="text-sm text-slate-500">{unit === 'Semua' ? 'Seluruh bidang' : `Kas ${unit}`} · {periodLabel(tahun, bulan)}</p>
         </div>
         <div className="flex flex-wrap gap-2">
-          <select aria-label="Unit" className="inp !w-auto" value={unit} onChange={(e) => setUnit(e.target.value)}>
-            {['Semua', ...UNITS].map((u) => <option key={u} value={u}>{u === 'Semua' ? 'Semua unit' : u}</option>)}
+          <select aria-label="Bidang" className="inp !w-auto" value={unit} onChange={(e) => setUnit(e.target.value)}>
+            {['Semua', ...UNITS].map((u) => <option key={u} value={u}>{u === 'Semua' ? 'Semua bidang' : u}</option>)}
           </select>
           <select aria-label="Tahun" className="inp !w-auto" value={String(tahun)}
             onChange={(e) => { const v = e.target.value; setTahunSel(v === 'Semua' ? 'Semua' : Number(v)); if (v === 'Semua') setBulan('Semua'); setLimit(15); }}>
@@ -108,11 +109,38 @@ export default function LaporanKas({ trx, namaYayasan = 'Yayasan' }) {
           <TimeChart buckets={report.buckets} />
         </div>
         <div className="rounded-card border bg-slate-50 p-5">
-          <h4 className="mb-3 font-bold">Per unit · {periodLabel(tahun, bulan)}</h4>
+          <h4 className="mb-3 font-bold">Per bidang · {periodLabel(tahun, bulan)}</h4>
           <Legend />
           <UnitChart data={report.perUnit} />
         </div>
       </div>
+
+      {report.perLembaga.length > 0 && (
+        <div className="space-y-2">
+          <h4 className="font-bold">Per lembaga &amp; sub unit · {periodLabel(tahun, bulan)}</h4>
+          <div className="overflow-x-auto rounded-card border">
+            <table className="w-full min-w-[480px] text-left text-sm">
+              <thead className="bg-brand-50 text-xs uppercase text-slate-600">
+                <tr><th className="p-3">Lembaga / Sub unit</th><th className="p-3 text-right">Masuk</th><th className="p-3 text-right">Keluar</th><th className="p-3 text-right">Selisih</th></tr>
+              </thead>
+              <tbody className="divide-y bg-white">
+                {report.perLembaga.map((r) => (
+                  <tr key={`${r.anak ? 'a' : 'u'}-${r.label}`} className={r.anak ? '' : 'bg-slate-50 font-semibold'}>
+                    <td className={`p-3 ${r.anak ? 'pl-8' : ''}`}>
+                      {r.anak && <span className="mr-1 text-slate-400">↳</span>}{r.label}
+                      {r.jenis === 'Usaha' && <span className="ml-2 rounded-full bg-amber-100 px-2 py-0.5 text-xs font-semibold text-amber-800">Usaha</span>}
+                    </td>
+                    <td className="p-3 text-right text-emerald-700">{rupiah(r.masuk)}</td>
+                    <td className="p-3 text-right text-red-600">{rupiah(r.keluar)}</td>
+                    <td className={`p-3 text-right font-semibold ${r.selisih < 0 ? 'text-red-600' : 'text-slate-800'}`}>{rupiah(r.selisih)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          <p className="text-xs text-slate-500">Dihitung dari kolom “Nama Lembaga” pada transaksi. Selisih = masuk − keluar; transaksi tanpa penanda lembaga digabung di “Tanpa rincian lembaga”.</p>
+        </div>
+      )}
 
       <div className="flex flex-wrap items-center justify-between gap-3">
         <h4 className="font-bold">Rincian transaksi ({rows.length})</h4>
@@ -125,7 +153,7 @@ export default function LaporanKas({ trx, namaYayasan = 'Yayasan' }) {
       <div className="overflow-x-auto rounded-card border">
         <table className="w-full min-w-[640px] text-left text-sm">
           <thead className="bg-brand-50 text-xs uppercase text-slate-600">
-            <tr><th className="p-3">Tanggal</th><th className="p-3">Unit</th><th className="p-3">Keterangan</th>
+            <tr><th className="p-3">Tanggal</th><th className="p-3">Bidang</th><th className="p-3">Keterangan</th>
               <th className="p-3 text-right">Masuk</th><th className="p-3 text-right">Keluar</th><th className="p-3 text-right">Saldo</th><th className="p-3">Bukti</th></tr>
           </thead>
           <tbody className="divide-y bg-white">
