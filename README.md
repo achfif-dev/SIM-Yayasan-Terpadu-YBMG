@@ -53,6 +53,19 @@ Nama cloud dan preset berada di `NEXT_PUBLIC_*`, jadi siapa pun bisa mengunggah 
 - Logika perhitungan ada di `lib/rutin.js` (fungsi murni, tanpa Firebase).
 - **Wajib**: tempel ulang `firestore.rules` ke Firestore → Rules → Publish (ada aturan baru untuk `routine_events`); tanpa ini simpan/baca kegiatan rutin akan ditolak.
 
+## Bidang yayasan: keagamaan, sosial, kemanusiaan (sesuai AD/ART)
+- Kategori lembaga sekaligus unit kas kini adalah **Keagamaan**, **Sosial**, dan **Kemanusiaan** (sebelumnya Masjid / Pendidikan / Sosial). Daftar ada di `lib/bidang.js`; dipakai di Admin (Lembaga, Kas), beranda (filter, kartu keuangan), dan laporan kas.
+- **Data lama tidak perlu dimigrasi.** Nama lama dipetakan saat dibaca: **Masjid → Keagamaan**, **Pendidikan → Sosial**, Sosial tetap Sosial (peta `PETA_LAMA` di `lib/bidang.js`). Nilai barunya tertulis sendiri saat lembaga/transaksi itu diedit dan disimpan, dan dokumen ringkasan kas lama tetap terbaca (dijumlahkan per bidang baru) sampai Anda menekan **Admin → Kas → Bangun ulang ringkasan**.
+- Pendidikan dipetakan ke Sosial karena pendidikan lazimnya masuk bidang sosial. Jika AD/ART menempatkannya di bidang lain (mis. pesantren di Keagamaan), ubah satu baris `PETA_LAMA`; atau ubah bidang tiap lembaga lewat Admin → Lembaga (transaksi kas lama mengikuti `PETA_LAMA`).
+- **Kemanusiaan** baru dan belum punya data: buat lembaganya di Admin → Lembaga, lalu catat kasnya dengan Bidang (Kas) = Kemanusiaan.
+
+## Sub unit di bawah lembaga (termasuk Usaha)
+- **Admin → Lembaga**: isi kolom **Sub unit dari** untuk menjadikan sebuah entri sub unit dari lembaga utama (berbidang Keagamaan / Sosial / Kemanusiaan). Kosongkan untuk lembaga utama. Satu tingkat saja (sub unit tidak punya sub unit). Sub unit **mewarisi kategori/kas induknya**.
+- **Jenis sub unit**: *Unit* (kelas, program, TK/SD, layanan, dll.) atau *Usaha*. Karena yayasan bergerak di bidang keagamaan, sosial, dan kemanusiaan (bukan usaha), **Usaha hanya boleh di bawah lembaga bidang Keagamaan, mis. Masjid** (aturan ada di `USAHA_DI` pada `lib/lembaga.js`; ubah di sana bila kebijakan berubah). Lembaga bidang Sosial/Kemanusiaan tidak bisa punya unit Usaha, dan lembaga Keagamaan yang masih punya unit Usaha tidak bisa dipindah ke bidang lain.
+- Nama harus **unik** (dipakai sebagai penanda di berita, kegiatan, dan kas). Lembaga yang masih punya sub unit tidak bisa dihapus sebelum sub unitnya dihapus/dipindah. Data lama otomatis menjadi lembaga utama (tidak perlu migrasi).
+- **Beranda**: sub unit tampil di dalam kartu lembaga induknya ("Unit di bawahnya", unit Usaha berlencana kuning). Filter lembaga pada Berita & Kegiatan menampilkan sub unit menjorok di bawah induknya; memilih lembaga utama juga menampilkan konten sub unitnya.
+- **Kas**: kolom transaksi *Lembaga / Sub Unit* kini berupa pilihan (teks bebas lama tetap terbaca). Sistem menolak penanda yang tidak sejalan, mis. transaksi untuk "Kantin Masjid" harus berada di Kas Keagamaan. Total per bidang (Keagamaan/Sosial/Kemanusiaan) di beranda tidak berubah; di Admin → Kas laporan memuat tabel **Per lembaga & sub unit** (masuk, keluar, selisih = laba/rugi kas untuk Usaha) dan ikut diekspor ke Excel/PDF. Tabel ini sengaja hanya tampil di admin; untuk menampilkannya di beranda, teruskan `lembaga={institutions}` ke `<LaporanKas>` di `app/page.js`.
+
 ## Kalender bulanan di beranda
 - Di **Berita & Kegiatan** muncul **Kalender Kegiatan** (grid bulan, pekan mulai Minggu) yang menggabungkan kegiatan sekali jalan (titik/label biru) dan kegiatan rutin (kuning) dalam satu tampilan. Ketuk tanggal untuk melihat rincian di panel samping/bawah, lengkap dengan tanggal Hijriah dan tombol Google Kalender/.ics/WhatsApp.
 - Hari yang **ditiadakan** (pengecualian/libur Ramadan) tetap tercantum di rincian dengan coretan dan lencana "Ditiadakan", tetapi tidak dihitung di grid.
