@@ -2,11 +2,12 @@
 
 import { useEffect, useRef, useState } from 'react';
 import { collection, doc, getDoc, getDocs, limit, orderBy, query, startAfter, where } from 'firebase/firestore';
-import { CalendarDays, Clock, Image as ImageIcon, MapPin, Megaphone, Pin, X, ChevronLeft, ChevronRight, Loader2 } from 'lucide-react';
+import { CalendarDays, Clock, Image as ImageIcon, MapPin, Megaphone, Pin, X, ChevronLeft, ChevronRight, Loader2, Repeat } from 'lucide-react';
 import { getDb } from '../lib/firebase';
 import { optimizeUrl } from '../lib/cdn';
 import { CACHE_TTL, cached, useInView } from '../lib/hemat';
 import { BULAN, BULAN_SINGKAT } from '../lib/laporan';
+import { KELOMPOK, berikutnya, berikutnyaTanpaLibur, pengecualianTeks, polaTeks, tglHijriTeks } from '../lib/rutin';
 
 const HARI = ['Minggu', 'Senin', 'Selasa', 'Rabu', 'Kamis', 'Jumat', 'Sabtu'];
 const ANN_LIMIT = 12;
@@ -42,6 +43,8 @@ export default function Konten({ institutions = [], showBerita = true, showGaler
   const [ann, setAnn] = useState([]);
   const [evt, setEvt] = useState([]);
   const [gal, setGal] = useState([]);
+  const [rtn, setRtn] = useState([]);
+  const [rtnAll, setRtnAll] = useState(false);
   const [loaded, setLoaded] = useState(false);
   const [lembaga, setLembaga] = useState('Semua');
   const [annShow, setAnnShow] = useState(6);
@@ -62,7 +65,7 @@ export default function Konten({ institutions = [], showBerita = true, showGaler
     if (!near) return undefined;
     let alive = true;
     (async () => {
-      const key = `konten-v2-${showBerita ? 1 : 0}${showGaleri ? 1 : 0}`;
+      const key = `konten-v3-${showBerita ? 1 : 0}${showGaleri ? 1 : 0}`;
       const data = await cached(key, CACHE_TTL, async () => {
         const db = getDb();
         const cutoff = new Date();
@@ -72,17 +75,20 @@ export default function Konten({ institutions = [], showBerita = true, showGaler
           showBerita ? getDocs(query(collection(db, 'announcements'), orderBy('tanggal', 'desc'), limit(ANN_LIMIT))) : none,
           showBerita ? getDocs(query(collection(db, 'events'), where('tanggal', '>=', toStr(cutoff)), orderBy('tanggal', 'asc'))) : none,
           showGaleri ? getDocs(query(collection(db, 'gallery'), orderBy('tanggal', 'desc'), limit(GAL_LIMIT))) : none,
+          // aturan kegiatan rutin: jumlahnya kecil (1 dokumen per aturan), tanpa indeks tambahan
+          showBerita ? getDocs(collection(db, 'routine_events')) : none,
         ]);
         const rows = (r) => (r.status === 'fulfilled' ? r.value.docs.map((d) => ({ id: d.id, ...d.data() })) : []);
         rs.forEach((r) => { if (r.status === 'rejected') console.error('Gagal memuat konten:', r.reason); });
         const a = rows(rs[0]);
         const g = rows(rs[2]);
-        return { ann: a, evt: rows(rs[1]), gal: g, annMore: a.length >= ANN_LIMIT, galMore: g.length >= GAL_LIMIT, ok: rs.every((r) => r.status === 'fulfilled') };
+        return { ann: a, evt: rows(rs[1]), gal: g, rtn: rows(rs[3]), annMore: a.length >= ANN_LIMIT, galMore: g.length >= GAL_LIMIT, ok: rs.every((r) => r.status === 'fulfilled') };
       }, (v) => v.ok);
       if (!alive) return;
       setAnn(data.ann);
       setEvt(data.evt);
       setGal(data.gal);
+      setRtn(data.rtn || []);
       setAnnMore(!!data.annMore);
       setGalMore(!!data.galMore);
       setLoaded(true);
@@ -128,6 +134,10 @@ export default function Konten({ institutions = [], showBerita = true, showGaler
   const upcoming = evt.filter(match).filter((e) => e.tanggal >= today).sort((a, b) => String(a.tanggal).localeCompare(String(b.tanggal)) || String(a.jamMulai || '').localeCompare(String(b.jamMulai || '')));
   const past = evt.filter(match).filter((e) => e.tanggal < today).sort((a, b) => String(b.tanggal).localeCompare(String(a.tanggal)));
   const galList = gal.filter(match);
+  // Kegiatan rutin: hitung kemunculan berikutnya di browser, urut dari yang paling dekat
+  const rutin = rtn.filter((r) => r.aktif !== 'Tidak').filter(match)
+    .map((r) => ({ ...r, next: berikutnya(r, today) })).filter((r) => r.next)
+    .sort((a, b) => a.next.localeCompare(b.next) || String(a.jamMulai || '').localeCompare(String(b.jamMulai || '')));
 
   const names = institutions.map((i) => i.namaLembaga).filter(Boolean).sort();
   const Filter = (
@@ -182,6 +192,23 @@ export default function Konten({ institutions = [], showBerita = true, showGaler
                   {showPast ? 'Sembunyikan' : 'Lihat'} kegiatan yang sudah lewat ({past.length})
                 </button>
                 {showPast && <div className="mt-3 space-y-4 opacity-70">{past.map((e) => <EventCard key={e.id} e={e} />)}</div>}
+              </div>
+            )}
+            {loaded && rutin.length > 0 && (
+              <div className="space-y-4 pt-4">
+                <h3 className="flex items-center gap-2 font-bold text-brand-800"><Repeat size={16} /> Kegiatan Rutin</h3>
+                {KELOMPOK.map((k) => {
+                  const list = rutin.filter((r) => k.anggota.includes(r.frekuensi));
+                  if (!list.length) return null;
+                  const batas = rtnAll ? list.length : 4;
+                  return (
+                    <div key={k.id} className="space-y-3">
+                      <p className="text-xs font-bold uppercase tracking-widest text-slate-500">{k.label}</p>
+                      {list.slice(0, batas).map((r) => <RutinCard key={r.id} r={r} today={today} />)}
+                      {list.length > batas && <button className="text-sm font-semibold text-brand-700 hover:underline" onClick={() => setRtnAll(true)}>Tampilkan semua {k.label.toLowerCase()} ({list.length})</button>}
+                    </div>
+                  );
+                })}
               </div>
             )}
           </aside>
@@ -244,6 +271,31 @@ function EventCard({ e }) {
         <div className="mt-1.5"><Tag>{e.lembaga || 'Umum'}</Tag></div>
         {e.deskripsi && <p className="mt-2 whitespace-pre-line text-slate-600">{e.deskripsi}</p>}
       </div>
+    </div>
+  );
+}
+
+function RutinCard({ r, today }) {
+  const hariIni = r.next === today;
+  const hijriah = String(r.frekuensi).startsWith('hijriah');
+  // Jadwal normal yang jatuh pada tanggal pengecualian (libur) → beri tahu pengunjung
+  const normal = berikutnyaTanpaLibur(r, today);
+  const libur = normal && normal !== r.next ? normal : '';
+  return (
+    <div className="rounded-card border bg-white p-4 text-sm">
+      <div className="flex items-start justify-between gap-2">
+        <p className="font-bold">{r.judul}</p>
+        {hariIni && <span className="shrink-0 rounded-full bg-amber-100 px-2 py-0.5 text-xs font-semibold text-amber-700">Hari ini</span>}
+      </div>
+      <p className="mt-0.5 flex items-center gap-1.5 font-medium text-brand-700"><Repeat size={13} /> {polaTeks(r)}</p>
+      {jam(r) && <p className="mt-0.5 flex items-center gap-1.5 text-slate-500"><Clock size={13} /> {jam(r)}</p>}
+      {r.lokasi && <p className="flex items-center gap-1.5 text-slate-500"><MapPin size={13} /> {r.lokasi}</p>}
+      {!hariIni && <p className="flex items-center gap-1.5 text-slate-500"><CalendarDays size={13} /> Berikutnya: {hariTgl(r.next)}</p>}
+      {hijriah && tglHijriTeks(r.next, r.geserHijri) && <p className="pl-5 text-xs text-slate-400">{tglHijriTeks(r.next, r.geserHijri)}</p>}
+      {libur && <p className="mt-1 rounded-md bg-amber-50 px-2 py-1 text-xs text-amber-800">Ditiadakan pada {hariTgl(libur)}</p>}
+      {!libur && r.liburRamadan === 'Ya' && pengecualianTeks(r) && <p className="mt-1 text-xs text-slate-400">{pengecualianTeks(r)}</p>}
+      <div className="mt-1.5"><Tag>{r.lembaga || 'Umum'}</Tag></div>
+      {r.deskripsi && <p className="mt-2 whitespace-pre-line text-slate-600">{r.deskripsi}</p>}
     </div>
   );
 }
