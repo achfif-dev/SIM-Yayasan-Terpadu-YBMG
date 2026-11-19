@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
-import { collection, getDocs, limit, orderBy, query, where } from 'firebase/firestore';
+import { collection, doc, getDoc, getDocs, limit, orderBy, query, startAfter, where } from 'firebase/firestore';
 import { CalendarDays, Clock, Image as ImageIcon, MapPin, Megaphone, Pin, X, ChevronLeft, ChevronRight, Loader2 } from 'lucide-react';
 import { getDb } from '../lib/firebase';
 import { optimizeUrl } from '../lib/cdn';
@@ -10,7 +10,8 @@ import { BULAN, BULAN_SINGKAT } from '../lib/laporan';
 
 const HARI = ['Minggu', 'Senin', 'Selasa', 'Rabu', 'Kamis', 'Jumat', 'Sabtu'];
 const ANN_LIMIT = 12;
-const GAL_LIMIT = 24;
+const GAL_LIMIT = 12;
+const PAGE = 12; // jumlah tambahan per klik "Muat lebih lama"
 
 const pad = (n) => String(n).padStart(2, '0');
 const toStr = (d) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
@@ -45,6 +46,10 @@ export default function Konten({ institutions = [], showBerita = true, showGaler
   const [lembaga, setLembaga] = useState('Semua');
   const [annShow, setAnnShow] = useState(6);
   const [galShow, setGalShow] = useState(12);
+  const [annMore, setAnnMore] = useState(false);
+  const [galMore, setGalMore] = useState(false);
+  const [moreBusy, setMoreBusy] = useState('');
+  const [moreErr, setMoreErr] = useState('');
   const [showPast, setShowPast] = useState(false);
   const [detail, setDetail] = useState(null);
   const [light, setLight] = useState(null);
@@ -57,7 +62,7 @@ export default function Konten({ institutions = [], showBerita = true, showGaler
     if (!near) return undefined;
     let alive = true;
     (async () => {
-      const key = `konten-v1-${showBerita ? 1 : 0}${showGaleri ? 1 : 0}`;
+      const key = `konten-v2-${showBerita ? 1 : 0}${showGaleri ? 1 : 0}`;
       const data = await cached(key, CACHE_TTL, async () => {
         const db = getDb();
         const cutoff = new Date();
@@ -70,16 +75,50 @@ export default function Konten({ institutions = [], showBerita = true, showGaler
         ]);
         const rows = (r) => (r.status === 'fulfilled' ? r.value.docs.map((d) => ({ id: d.id, ...d.data() })) : []);
         rs.forEach((r) => { if (r.status === 'rejected') console.error('Gagal memuat konten:', r.reason); });
-        return { ann: rows(rs[0]), evt: rows(rs[1]), gal: rows(rs[2]), ok: rs.every((r) => r.status === 'fulfilled') };
+        const a = rows(rs[0]);
+        const g = rows(rs[2]);
+        return { ann: a, evt: rows(rs[1]), gal: g, annMore: a.length >= ANN_LIMIT, galMore: g.length >= GAL_LIMIT, ok: rs.every((r) => r.status === 'fulfilled') };
       }, (v) => v.ok);
       if (!alive) return;
       setAnn(data.ann);
       setEvt(data.evt);
       setGal(data.gal);
+      setAnnMore(!!data.annMore);
+      setGalMore(!!data.galMore);
       setLoaded(true);
     })();
     return () => { alive = false; };
   }, [near, showBerita, showGaleri]);
+
+  // Filter lembaga bekerja pada data yang sudah dimuat; item lama dimuat per halaman (tanpa indeks tambahan)
+  const fetchMore = async (kind) => {
+    const isAnn = kind === 'ann';
+    const col = isAnn ? 'announcements' : 'gallery';
+    const list = isAnn ? ann : gal;
+    const last = list[list.length - 1];
+    if (!last || moreBusy) return;
+    setMoreBusy(kind);
+    setMoreErr('');
+    try {
+      const db = getDb();
+      const lastSnap = await getDoc(doc(db, col, last.id));
+      const cursor = lastSnap.exists() ? lastSnap : last.tanggal;
+      const snap = await getDocs(query(collection(db, col), orderBy('tanggal', 'desc'), startAfter(cursor), limit(PAGE)));
+      const rows = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+      if (isAnn) { setAnn((p) => [...p, ...rows]); setAnnMore(rows.length === PAGE); setAnnShow((n) => n + PAGE); }
+      else { setGal((p) => [...p, ...rows]); setGalMore(rows.length === PAGE); setGalShow((n) => n + PAGE); }
+    } catch (err) {
+      console.error('Gagal memuat data lama:', err);
+      setMoreErr('Gagal memuat data yang lebih lama. Coba lagi.');
+    }
+    setMoreBusy('');
+  };
+  const moreBtn = (kind, label) => (
+    <div className="text-center">
+      <button className="btn-light" disabled={!!moreBusy} onClick={() => fetchMore(kind)}>{moreBusy === kind ? 'Memuat…' : label}</button>
+      {moreErr && <p className="mt-2 text-sm text-red-600">{moreErr}</p>}
+    </div>
+  );
 
   const match = (x) => lembaga === 'Semua' || (lembaga === 'Umum' ? !x.lembaga : x.lembaga === lembaga);
   const today = toStr(new Date());
@@ -112,7 +151,7 @@ export default function Konten({ institutions = [], showBerita = true, showGaler
         <div className="mt-10 grid gap-8 lg:grid-cols-3">
           <div className="space-y-5 lg:col-span-2">
             <h3 className="font-bold text-brand-800">Pengumuman</h3>
-            {!loaded ? loading : annList.length === 0 && <p className="rounded-card border bg-white p-6 text-center text-sm text-slate-500">Belum ada pengumuman.</p>}
+            {!loaded ? loading : annList.length === 0 && <p className="rounded-card border bg-white p-6 text-center text-sm text-slate-500">{annMore ? 'Belum ada pengumuman di data terbaru.' : 'Belum ada pengumuman.'}</p>}
             {annList.slice(0, annShow).map((a) => (
               <article key={a.id} className="flex flex-col overflow-hidden rounded-card border bg-white sm:flex-row">
                 {a.gambarUrl && <img src={optimizeUrl(a.gambarUrl, 500)} alt="" loading="lazy" className="h-44 w-full object-cover sm:h-auto sm:w-48" />}
@@ -128,9 +167,9 @@ export default function Konten({ institutions = [], showBerita = true, showGaler
                 </div>
               </article>
             ))}
-            {annList.length > annShow && (
-              <div className="text-center"><button className="btn-light" onClick={() => setAnnShow((n) => n + 6)}>Tampilkan lebih banyak</button></div>
-            )}
+            {annList.length > annShow
+              ? <div className="text-center"><button className="btn-light" onClick={() => setAnnShow((n) => n + 6)}>Tampilkan lebih banyak</button></div>
+              : annMore && moreBtn('ann', 'Muat pengumuman lebih lama')}
           </div>
 
           <aside className="space-y-4">
@@ -155,7 +194,7 @@ export default function Konten({ institutions = [], showBerita = true, showGaler
         <div className="mx-auto max-w-content">
           <h2 className="flex items-center justify-center gap-2 text-2xl font-bold"><ImageIcon /> Galeri Kegiatan</h2>
           <div className="mt-6 flex justify-center">{Filter}</div>
-          {!loaded ? loading : galList.length === 0 && <p className="mt-10 text-center text-slate-500">Belum ada foto.</p>}
+          {!loaded ? loading : galList.length === 0 && <p className="mt-10 text-center text-slate-500">{galMore ? 'Belum ada foto di data terbaru.' : 'Belum ada foto.'}</p>}
           <div className="mt-8 grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
             {galList.slice(0, galShow).map((g, i) => (
               <button key={g.id} onClick={() => setLight(i)} className="group relative aspect-square overflow-hidden rounded-xl bg-slate-100">
@@ -164,9 +203,9 @@ export default function Konten({ institutions = [], showBerita = true, showGaler
               </button>
             ))}
           </div>
-          {galList.length > galShow && (
-            <div className="mt-6 text-center"><button className="btn-light" onClick={() => setGalShow((n) => n + 12)}>Tampilkan lebih banyak</button></div>
-          )}
+          {galList.length > galShow
+            ? <div className="mt-6 text-center"><button className="btn-light" onClick={() => setGalShow((n) => n + 12)}>Tampilkan lebih banyak</button></div>
+            : galMore && <div className="mt-6">{moreBtn('gal', 'Muat foto lebih lama')}</div>}
         </div>
       </section>
 )}
