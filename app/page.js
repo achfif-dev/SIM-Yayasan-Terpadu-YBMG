@@ -80,7 +80,8 @@ export default function HomePage() {
           return {
             profile: p.exists() ? p.data() : null,
             tampilan: tp.exists() ? tp.data() : null,
-            institutions: i.docs.map((x) => ({ id: x.id, ...x.data() })),
+            institutions: i.docs.map((x) => ({ id: x.id, ...x.data() }))
+              .sort((x, y) => (x.urutan || 0) - (y.urutan || 0) || String(x.namaLembaga || '').localeCompare(String(y.namaLembaga || ''))),
             members: m.docs.map((x) => ({ id: x.id, ...x.data() })).sort((x, y) => (x.urutan || 0) - (y.urutan || 0)),
           };
         });
