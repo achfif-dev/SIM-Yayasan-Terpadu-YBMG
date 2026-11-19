@@ -6,10 +6,12 @@ import { onAuthStateChanged, signOut } from 'firebase/auth';
 import {
   addDoc, collection, deleteDoc, doc, getDoc, getDocs, limit, orderBy, query, serverTimestamp, setDoc, updateDoc,
 } from 'firebase/firestore';
-import { Building2, Landmark, Users, Wallet, LogOut, Loader2, Pencil, Trash2, Plus, Upload, Home, Paperclip, Megaphone, CalendarDays, Image as ImageIcon, Palette, RotateCcw, Repeat } from 'lucide-react';
+import { Building2, Landmark, Users, Wallet, LogOut, Loader2, Pencil, Trash2, Plus, Upload, Home, Paperclip, Megaphone, CalendarDays, Image as ImageIcon, Palette, RotateCcw, Repeat, ShieldCheck, DatabaseBackup } from 'lucide-react';
 import Link from 'next/link';
 import { getAuthInstance, getDb } from '../../lib/firebase';
-import { isAdminEmail } from '../../lib/admin';
+import { cekAdmin, isOwnerEmail } from '../../lib/admin';
+import AdminAkses from '../../components/AdminAkses';
+import AdminCadangan from '../../components/AdminCadangan';
 import { uploadImage, deleteBukti } from '../../lib/upload';
 import { BuktiField } from '../../components/Bukti';
 import LaporanKas from '../../components/LaporanKas';
@@ -532,6 +534,8 @@ const TABS = [
   { id: 'kegiatan', label: 'Kegiatan', icon: CalendarDays },
   { id: 'rutin', label: 'Rutin', icon: Repeat },
   { id: 'galeri', label: 'Galeri', icon: ImageIcon },
+  { id: 'cadangan', label: 'Cadangan', icon: DatabaseBackup },
+  { id: 'admin', label: 'Admin', icon: ShieldCheck, pemilik: true }, // hanya pemilik
 ];
 
 export default function AdminPage() {
@@ -541,12 +545,15 @@ export default function AdminPage() {
   const [tab, setTab] = useState('profil');
 
   useEffect(() => {
-    const unsub = onAuthStateChanged(getAuthInstance(), (u) => {
-      if (!u) router.replace('/login');
-      else if (!isAdminEmail(u.email) || !u.emailVerified) { signOut(getAuthInstance()).finally(() => router.replace('/login')); }
+    let batal = false;
+    const unsub = onAuthStateChanged(getAuthInstance(), async (u) => {
+      if (!u) { router.replace('/login'); return; }
+      const ok = u.emailVerified && await cekAdmin(u);
+      if (batal) return;
+      if (!ok) { signOut(getAuthInstance()).finally(() => router.replace('/login')); }
       else { setUser(u); setReady(true); }
     });
-    return () => unsub();
+    return () => { batal = true; unsub(); };
   }, [router]);
 
   if (!ready) {
@@ -567,7 +574,7 @@ export default function AdminPage() {
       </header>
       <main className="mx-auto max-w-5xl space-y-6 px-4 py-6">
         <div className="flex gap-2 overflow-x-auto">
-          {TABS.map((t) => (
+          {TABS.filter((t) => !t.pemilik || isOwnerEmail(user?.email)).map((t) => (
             <button key={t.id} onClick={() => setTab(t.id)}
               className={`flex shrink-0 items-center gap-2 rounded-lg px-4 py-2 text-sm font-medium ${tab === t.id ? 'bg-brand-700 text-white' : 'bg-white hover:bg-slate-100'}`}>
               <t.icon size={16} /> {t.label}
@@ -608,6 +615,8 @@ export default function AdminPage() {
               }} />
           </>
         )}
+        {tab === 'cadangan' && <AdminCadangan isOwner={isOwnerEmail(user?.email)} />}
+        {tab === 'admin' && isOwnerEmail(user?.email) && <AdminAkses />}
         {tab === 'galeri' && (
           <CrudTab col="gallery" fields={GAL_FIELDS} sort={byTanggal}
             renderItem={(g) => (<div className="flex items-center gap-3">{g.gambarUrl && <img src={g.gambarUrl} alt="" className="h-12 w-12 rounded-lg object-cover" />}<div className="min-w-0"><p className="truncate font-semibold">{g.keterangan || 'Tanpa keterangan'}</p><p className="truncate text-slate-500">{g.tanggal} · {g.lembaga || 'Umum'}</p></div></div>)} />
