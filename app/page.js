@@ -6,7 +6,7 @@ import Link from 'next/link';
 import { collection, doc, getDoc, getDocs } from 'firebase/firestore';
 import {
   Landmark, GraduationCap, HeartHandshake, Building2, Phone, Mail, MapPin,
-  Wallet, Users, Menu, X, Star, ArrowDownCircle, ArrowUpCircle,
+  Wallet, Users, Menu, X, Star, ArrowDownCircle, ArrowUpCircle, Loader2,
 } from 'lucide-react';
 import { getDb } from '../lib/firebase';
 import LaporanKas from '../components/LaporanKas';
@@ -30,6 +30,10 @@ const DEFAULT_PROFILE = {
 const UNITS = ['Masjid', 'Pendidikan', 'Sosial'];
 const DIVISI = ['Pembina', 'Pengawas', 'Pengurus Harian', 'Unit'];
 const ICONS = { Masjid: Landmark, Pendidikan: GraduationCap, Sosial: HeartHandshake };
+const fetchTrx = async () => {
+  const t = await getDocs(collection(getDb(), 'transactions'));
+  return t.docs.map((x) => ({ id: x.id, ...x.data() }));
+};
 const rupiah = (n) => new Intl.NumberFormat('id-ID', { style: 'currency', currency: 'IDR', maximumFractionDigits: 0 }).format(n || 0);
 
 function Logo({ url, size = 40 }) {
@@ -49,8 +53,13 @@ export default function HomePage() {
   const [tpl, setTpl] = useState(DEFAULT_TAMPILAN);
   const [institutions, setInstitutions] = useState([]);
   const [members, setMembers] = useState([]);
-  const [trx, setTrx] = useState([]);
-  const [trxLoaded, setTrxLoaded] = useState(false);
+  const [trx, setTrx] = useState(null); // null = rincian transaksi belum dimuat
+  const [ringkasan, setRingkasan] = useState(null);
+  const [kasReady, setKasReady] = useState(false);
+  const [kasError, setKasError] = useState('');
+  const [laporanError, setLaporanError] = useState('');
+  const [trxLoading, setTrxLoading] = useState(false);
+  const [retry, setRetry] = useState(0);
   const keuRef = useRef(null);
   const [filter, setFilter] = useState('Semua');
   const [open, setOpen] = useState(false);
@@ -89,31 +98,60 @@ export default function HomePage() {
     return () => { alive = false; };
   }, []);
 
-  // Transaksi baru dibaca saat bagian Keuangan mendekati layar (pengunjung yang tidak scroll ke sana tidak memakai kuota baca)
+  // Bagian Keuangan: baca 1 dokumen ringkasan saat mendekati layar (hemat kuota).
+  // Rincian transaksi baru dimuat saat pengunjung menekan "Tampilkan laporan rinci".
+  // Bila ringkasan belum pernah dibuat admin, jatuh kembali ke membaca seluruh transaksi.
   const keuNear = useInView(keuRef, isYa(tpl.tampilKeuangan));
   useEffect(() => {
     if (!keuNear) return undefined;
     let alive = true;
-    cached('trx-v1', CACHE_TTL, async () => {
-      const t = await getDocs(collection(getDb(), 'transactions'));
-      return t.docs.map((x) => ({ id: x.id, ...x.data() }));
-    })
-      .then((rows) => { if (alive) setTrx(rows); })
-      .catch((err) => console.error('Gagal memuat transaksi:', err))
-      .finally(() => { if (alive) setTrxLoaded(true); });
+    (async () => {
+      try {
+        const r = await cached('ringkasan-v1', CACHE_TTL, async () => {
+          const sn = await getDoc(doc(getDb(), 'settings', 'ringkasanKas'));
+          return { ada: sn.exists(), data: sn.exists() ? sn.data() : null };
+        }, (v) => v.ada);
+        if (!alive) return;
+        if (r.ada) { setRingkasan(r.data); setKasReady(true); return; }
+        const rows = await cached('trx-v1', CACHE_TTL, fetchTrx);
+        if (!alive) return;
+        setTrx(rows);
+        setKasReady(true);
+      } catch (err) {
+        console.error('Gagal memuat data keuangan:', err);
+        if (alive) setKasError('Data keuangan gagal dimuat. Periksa koneksi Anda lalu coba lagi.');
+      }
+    })();
     return () => { alive = false; };
-  }, [keuNear]);
+  }, [keuNear, retry]);
+
+  const loadTrx = () => {
+    setTrxLoading(true);
+    setLaporanError('');
+    cached('trx-v1', CACHE_TTL, fetchTrx)
+      .then(setTrx)
+      .catch((err) => { console.error('Gagal memuat transaksi:', err); setLaporanError('Laporan rinci gagal dimuat. Coba lagi.'); })
+      .finally(() => setTrxLoading(false));
+  };
 
   const saldo = useMemo(() => {
     const s = Object.fromEntries(UNITS.map((u) => [u, { masuk: 0, keluar: 0 }]));
-    trx.forEach((t) => {
-      const k = t.kategoriUnit;
-      if (!s[k]) return;
-      if (t.tipe === 'masuk') s[k].masuk += Number(t.jumlah) || 0;
-      else s[k].keluar += Number(t.jumlah) || 0;
-    });
+    if (trx) {
+      trx.forEach((t) => {
+        const k = t.kategoriUnit;
+        if (!s[k]) return;
+        if (t.tipe === 'masuk') s[k].masuk += Number(t.jumlah) || 0;
+        else s[k].keluar += Number(t.jumlah) || 0;
+      });
+    } else if (ringkasan?.total) {
+      UNITS.forEach((u) => {
+        s[u] = { masuk: Number(ringkasan.total[u]?.masuk) || 0, keluar: Number(ringkasan.total[u]?.keluar) || 0 };
+      });
+    }
     return s;
-  }, [trx]);
+  }, [trx, ringkasan]);
+  // '…' saat memuat, '—' saat gagal (jangan tampilkan Rp 0 yang menyesatkan)
+  const kasText = (v) => (kasError ? '—' : kasReady ? rupiah(v) : '…');
 
   const shown = filter === 'Semua' ? institutions : institutions.filter((x) => x.kategori === filter);
   const nav = [
@@ -251,16 +289,33 @@ export default function HomePage() {
               return (
                 <div key={u} className="rounded-card border bg-slate-50 p-6">
                   <div className="flex items-center gap-2 font-bold text-brand-800"><Icon size={20} /> Kas {u}</div>
-                  <p className="mt-3 text-2xl font-extrabold">{trxLoaded ? rupiah(s.masuk - s.keluar) : '…'}</p>
+                  <p className="mt-3 text-2xl font-extrabold">{kasText(s.masuk - s.keluar)}</p>
                   <div className="mt-3 space-y-1 text-sm">
-                    <p className="flex items-center gap-2 text-emerald-700"><ArrowDownCircle size={16} /> Masuk: {trxLoaded ? rupiah(s.masuk) : '…'}</p>
-                    <p className="flex items-center gap-2 text-red-600"><ArrowUpCircle size={16} /> Keluar: {trxLoaded ? rupiah(s.keluar) : '…'}</p>
+                    <p className="flex items-center gap-2 text-emerald-700"><ArrowDownCircle size={16} /> Masuk: {kasText(s.masuk)}</p>
+                    <p className="flex items-center gap-2 text-red-600"><ArrowUpCircle size={16} /> Keluar: {kasText(s.keluar)}</p>
                   </div>
                 </div>
               );
             })}
           </div>
-          {trxLoaded ? <LaporanKas trx={trx} namaYayasan={profile.namaYayasan} /> : <p className="mt-10 text-center text-sm text-slate-500">Memuat laporan kas…</p>}
+          {kasError ? (
+            <div className="mt-10 rounded-card border border-red-200 bg-red-50 p-6 text-center text-sm text-red-700">
+              <p>{kasError}</p>
+              <button className="btn-light mt-3" onClick={() => { setKasError(''); setRetry((n) => n + 1); }}>Coba lagi</button>
+            </div>
+          ) : !kasReady ? (
+            <p className="mt-10 text-center text-sm text-slate-500">Memuat ringkasan kas…</p>
+          ) : trx ? (
+            <LaporanKas trx={trx} namaYayasan={profile.namaYayasan} />
+          ) : (
+            <div className="mt-10 text-center">
+              <button className="btn" onClick={loadTrx} disabled={trxLoading}>
+                {trxLoading && <Loader2 size={14} className="animate-spin" />} Tampilkan laporan rinci
+              </button>
+              <p className="mt-2 text-xs text-slate-500">Grafik, rincian transaksi, bukti nota, dan ekspor Excel/PDF.</p>
+              {laporanError && <p className="mt-2 text-sm text-red-600">{laporanError}</p>}
+            </div>
+          )}
           <p className="mt-10 text-center text-sm text-slate-500">Rekening donasi: <b>{profile.rekeningDonasi}</b></p>
         </div>
       </section>
