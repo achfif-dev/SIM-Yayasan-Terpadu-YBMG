@@ -15,6 +15,7 @@ import { BuktiField } from '../../components/Bukti';
 import LaporanKas from '../../components/LaporanKas';
 import { DEFAULT_TAMPILAN, TAMPILAN_GROUPS, applyTheme, mergeTampilan } from '../../lib/tampilan';
 import { clearCache } from '../../lib/hemat';
+import { simpanRingkasan } from '../../lib/ringkasan';
 import { isCloudinaryOn } from '../../lib/cdn';
 
 const KATEGORI = ['Masjid', 'Pendidikan', 'Sosial'];
@@ -51,7 +52,7 @@ const TRX_FIELDS = [
   { name: 'tipe', label: 'Jenis', type: 'select', options: ['masuk', 'keluar'] },
   { name: 'kategoriUnit', label: 'Unit (Kas)', type: 'select', options: KATEGORI },
   { name: 'unitId', label: 'Nama Lembaga (opsional)' },
-  { name: 'jumlah', label: 'Jumlah (Rp)', type: 'number', required: true },
+  { name: 'jumlah', label: 'Jumlah (Rp)', type: 'number', required: true, min: 1 },
   { name: 'keterangan', label: 'Keterangan', type: 'textarea' },
   { name: 'bukti', label: 'Bukti Transaksi (foto nota/kwitansi)', type: 'bukti' },
 ];
@@ -153,7 +154,7 @@ function Field({ f, value, onChange }) {
       </div>
     );
   }
-  return <input type={f.type || 'text'} className="inp" {...base} onChange={(e) => onChange(f.type === 'number' ? e.target.value : e.target.value)} />;
+  return <input type={f.type || 'text'} className="inp" {...base} min={f.min} onChange={(e) => onChange(f.type === 'number' ? e.target.value : e.target.value)} />;
 }
 
 function FormFields({ fields, form, setForm }) {
@@ -259,7 +260,7 @@ function TampilanTab() {
   );
 }
 
-function CrudTab({ col, fields, sort, renderItem, numberFields = [], onItems }) {
+function CrudTab({ col, fields, sort, renderItem, numberFields = [], onItems, onSaved }) {
   const [items, setItems] = useState([]);
   const [form, setForm] = useState(initOf(fields));
   const [editId, setEditId] = useState(null);
@@ -267,6 +268,8 @@ function CrudTab({ col, fields, sort, renderItem, numberFields = [], onItems }) 
   const [msg, setMsg] = useState('');
   const onItemsRef = useRef(onItems);
   onItemsRef.current = onItems;
+  const onSavedRef = useRef(onSaved);
+  onSavedRef.current = onSaved;
 
   const load = useCallback(async () => {
     try {
@@ -274,7 +277,8 @@ function CrudTab({ col, fields, sort, renderItem, numberFields = [], onItems }) 
       const list = s.docs.map((d) => ({ id: d.id, ...d.data() })).sort(sort);
       setItems(list);
       onItemsRef.current?.(list);
-    } catch (err) { setMsg('Gagal memuat: ' + err.message); }
+      return list;
+    } catch (err) { setMsg('Gagal memuat: ' + err.message); return null; }
   }, [col, sort]);
 
   useEffect(() => { load(); }, [load]);
@@ -285,6 +289,8 @@ function CrudTab({ col, fields, sort, renderItem, numberFields = [], onItems }) 
     e.preventDefault();
     const missing = fields.find((f) => f.required && f.type === 'image' && !form[f.name]);
     if (missing) { setMsg(`${missing.label} wajib diisi`); return; }
+    const kecil = fields.find((f) => f.min !== undefined && !(Number(form[f.name]) >= f.min));
+    if (kecil) { setMsg(`${kecil.label} minimal ${kecil.min}`); return; }
     setBusy(true);
     const data = { ...form };
     numberFields.forEach((n) => { data[n] = Number(data[n]) || 0; });
@@ -300,7 +306,8 @@ function CrudTab({ col, fields, sort, renderItem, numberFields = [], onItems }) 
       clearCache();
       setMsg('Tersimpan ✓');
       reset();
-      await load();
+      const list = await load();
+      if (list && onSavedRef.current) await onSavedRef.current(list);
     } catch (err) { setMsg('Gagal: ' + err.message); }
     setBusy(false);
   };
@@ -312,7 +319,8 @@ function CrudTab({ col, fields, sort, renderItem, numberFields = [], onItems }) 
       await deleteDoc(doc(getDb(), col, id));
       for (const f of fields.filter((x) => x.type === 'bukti')) await deleteBukti(old?.[f.name]);
       clearCache();
-      await load();
+      const list = await load();
+      if (list && onSavedRef.current) await onSavedRef.current(list);
     } catch (err) { setMsg('Gagal: ' + err.message); }
   };
 
@@ -351,13 +359,25 @@ function CrudTab({ col, fields, sort, renderItem, numberFields = [], onItems }) 
 
 function KasTab() {
   const [trx, setTrx] = useState([]);
+  const [listed, setListed] = useState(false);
+  const [syncMsg, setSyncMsg] = useState('');
   const [nama, setNama] = useState('Yayasan');
+  // Perbarui dokumen ringkasan yang dibaca beranda (1 baca, bukan seluruh transaksi)
+  const sync = async (list) => {
+    setSyncMsg('Memperbarui ringkasan beranda…');
+    try { await simpanRingkasan(list); clearCache(); setSyncMsg('Ringkasan beranda diperbarui ✓'); }
+    catch (err) { setSyncMsg('Gagal memperbarui ringkasan beranda: ' + err.message); }
+  };
   useEffect(() => {
     getDoc(doc(getDb(), 'settings', 'profile')).then((s) => { if (s.exists() && s.data().namaYayasan) setNama(s.data().namaYayasan); }).catch(() => {});
   }, []);
   return (
     <div className="space-y-6">
-      <CrudTab col="transactions" fields={TRX_FIELDS} sort={byTanggal} numberFields={['jumlah']} onItems={setTrx}
+      <div className="flex flex-wrap items-center gap-3 rounded-2xl bg-white p-4 text-sm shadow-sm">
+        <button type="button" className="btn-light" disabled={!listed} onClick={() => sync(trx)}>Bangun ulang ringkasan</button>
+        <span className="text-slate-500">{syncMsg || 'Ringkasan beranda diperbarui otomatis tiap transaksi disimpan/dihapus. Klik tombol ini sekali setelah pembaruan pertama.'}</span>
+      </div>
+      <CrudTab col="transactions" fields={TRX_FIELDS} sort={byTanggal} numberFields={['jumlah']} onItems={(l) => { setTrx(l); setListed(true); }} onSaved={sync}
         renderItem={(t) => (<><p className={`font-semibold ${t.tipe === 'masuk' ? 'text-emerald-700' : 'text-red-600'}`}>{t.tipe === 'masuk' ? '+' : '-'} {rupiah(t.jumlah)} · Kas {t.kategoriUnit} {t.bukti && <Paperclip size={12} className="ml-1 inline text-slate-400" />}</p><p className="truncate text-slate-500">{t.tanggal} · {t.keterangan}</p></>)} />
       <div className="rounded-2xl bg-white p-6 shadow-sm"><LaporanKas trx={trx} namaYayasan={nama} /></div>
     </div>
@@ -384,7 +404,7 @@ export default function AdminPage() {
   useEffect(() => {
     const unsub = onAuthStateChanged(getAuthInstance(), (u) => {
       if (!u) router.replace('/login');
-      else if (!isAdminEmail(u.email)) { signOut(getAuthInstance()).finally(() => router.replace('/login')); }
+      else if (!isAdminEmail(u.email) || !u.emailVerified) { signOut(getAuthInstance()).finally(() => router.replace('/login')); }
       else { setUser(u); setReady(true); }
     });
     return () => unsub();
