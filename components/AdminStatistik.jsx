@@ -1,11 +1,11 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { collection, getDocs, limit, orderBy, query } from 'firebase/firestore';
-import { Loader2, RefreshCw, Eye, Users, Smartphone, Monitor } from 'lucide-react';
+import { collection, deleteDoc, doc, getDocs, limit, orderBy, query } from 'firebase/firestore';
+import { Loader2, RefreshCw, Eye, Users, Trash2 } from 'lucide-react';
 import { getDb } from '../lib/firebase';
 import { toStr } from '../lib/rutin';
-import { SUMBER } from '../lib/statistik';
+import { SUMBER, browserDikecualikan, kecualikanBrowser } from '../lib/statistik';
 
 const RENTANG = [7, 14, 30, 90];
 const num = (v) => Number(v) || 0;
@@ -38,6 +38,9 @@ export default function AdminStatistik() {
   const [err, setErr] = useState('');
   const [rentang, setRentang] = useState(14);
   const [busy, setBusy] = useState(false);
+  const [kecuali, setKecuali] = useState(false);
+  useEffect(() => { setKecuali(browserDikecualikan()); }, []);
+  const ubahKecuali = () => { kecualikanBrowser(!kecuali); setKecuali(!kecuali); };
 
   const muat = useCallback(async () => {
     setBusy(true);
@@ -53,6 +56,13 @@ export default function AdminStatistik() {
     setBusy(false);
   }, []);
   useEffect(() => { muat(); }, [muat]);
+
+  const reset = async () => {
+    if (!rows || !confirm('Hapus SEMUA data statistik yang tampil (90 hari terakhir)? Tidak bisa dibatalkan.')) return;
+    setBusy(true);
+    try { await Promise.all(Object.keys(rows).map((id) => deleteDoc(doc(getDb(), 'stats_harian', id)))); } catch (e) { setErr(`Gagal menghapus: ${e.message}`); }
+    await muat();
+  };
 
   // 90 hari terakhir, hari tanpa data diisi 0
   const hari = useMemo(() => {
@@ -87,6 +97,10 @@ export default function AdminStatistik() {
         </div>
         <button className="btn-light" onClick={muat} disabled={busy}>{busy ? <Loader2 size={14} className="animate-spin" /> : <RefreshCw size={14} />} Muat ulang</button>
       </div>
+      <p className="text-sm text-slate-600">
+        Browser ini: <b>{kecuali ? 'tidak dihitung' : 'dihitung bila Anda tidak sedang login'}</b>{' '}
+        <button className="underline" onClick={ubahKecuali}>{kecuali ? 'hitung lagi' : 'jangan hitung browser ini'}</button>
+      </p>
 
       {err && <p className="rounded-xl bg-red-50 p-4 text-sm text-red-700">{err}</p>}
       {!rows && !err && <div className="flex justify-center py-10"><Loader2 className="animate-spin text-brand-700" /></div>}
@@ -137,8 +151,10 @@ export default function AdminStatistik() {
             </div>
           </div>
 
+          <div><button className="btn-light !text-red-600" onClick={reset} disabled={busy}><Trash2 size={14} /> Hapus data statistik (mulai dari nol)</button></div>
+
           <p className="text-xs leading-relaxed text-slate-500">
-            Cara hitung: 1 kunjungan = 1 sesi browser; “unik” = 1 per browser per hari. Tidak ada data pribadi yang disimpan. Browser yang pernah dipakai masuk admin tidak dihitung. Angka bersifat perkiraan (pengunjung yang memblokir skrip atau menolak penyimpanan browser tidak terhitung). Tautan dari WhatsApp biasanya tercatat sebagai “Langsung”; tambahkan <b>?src=wa</b> di akhir tautan yang Anda bagikan agar tercatat sebagai WhatsApp (fb, ig, tg untuk Facebook, Instagram, Telegram).
+            Cara hitung: 1 kunjungan = 1 sesi browser; “unik” = 1 per browser per hari. Tidak ada data pribadi yang disimpan. Browser yang sedang login admin, atau yang ditandai “tidak dihitung” di atas, tidak dihitung. Untuk mengecualikan browser/HP lain (termasuk mode penyamaran), buka situs dengan tautan yang berakhiran <b>?stat=off</b>. Angka bersifat perkiraan (pengunjung yang memblokir skrip atau menolak penyimpanan browser tidak terhitung). Tautan dari WhatsApp biasanya tercatat sebagai “Langsung”; tambahkan <b>?src=wa</b> di akhir tautan yang Anda bagikan agar tercatat sebagai WhatsApp (fb, ig, tg untuk Facebook, Instagram, Telegram).
           </p>
         </>
       )}
