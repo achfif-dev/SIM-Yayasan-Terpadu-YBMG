@@ -6,7 +6,7 @@ import { onAuthStateChanged, signOut } from 'firebase/auth';
 import {
   addDoc, collection, deleteDoc, doc, getDoc, getDocs, limit, orderBy, query, serverTimestamp, setDoc, updateDoc,
 } from 'firebase/firestore';
-import { Building2, Landmark, Users, Wallet, LogOut, Loader2, Pencil, Trash2, Plus, Upload, Home, Paperclip, Megaphone, CalendarDays, Image as ImageIcon, BarChart3, ClipboardList, HeartHandshake, Palette, RotateCcw, Repeat, ShieldCheck, DatabaseBackup } from 'lucide-react';
+import { Building2, Landmark, Users, Wallet, LogOut, Loader2, Pencil, Trash2, Plus, Upload, Home, Paperclip, Megaphone, CalendarDays, Image as ImageIcon, BarChart3, ClipboardList, HeartHandshake, Palette, RotateCcw, Repeat, ShieldCheck, DatabaseBackup, Menu, X } from 'lucide-react';
 import Link from 'next/link';
 import { getAuthInstance, getDb } from '../../lib/firebase';
 import { cekAdmin, isOwnerEmail } from '../../lib/admin';
@@ -738,20 +738,28 @@ function KasTab() {
 }
 
 const TABS = [
-  { id: 'profil', label: 'Identitas', icon: Building2 },
-  { id: 'statistik', label: 'Pengunjung', icon: BarChart3 },
-  { id: 'tampilan', label: 'Tampilan', icon: Palette },
-  { id: 'lembaga', label: 'Lembaga', icon: Landmark },
-  { id: 'pengurus', label: 'Pengurus', icon: Users },
-  { id: 'kas', label: 'Kas', icon: Wallet },
-  { id: 'kepanitiaan', label: 'Kepanitiaan', icon: ClipboardList },
-  { id: 'donatur', label: 'Donatur', icon: HeartHandshake },
-  { id: 'berita', label: 'Berita', icon: Megaphone },
-  { id: 'kegiatan', label: 'Kegiatan', icon: CalendarDays },
-  { id: 'rutin', label: 'Rutin', icon: Repeat },
-  { id: 'galeri', label: 'Galeri', icon: ImageIcon },
-  { id: 'cadangan', label: 'Cadangan', icon: DatabaseBackup },
-  { id: 'admin', label: 'Admin', icon: ShieldCheck, pemilik: true }, // hanya pemilik
+  { id: 'profil', label: 'Identitas', icon: Building2, grup: 'lembaga' },
+  { id: 'statistik', label: 'Pengunjung', icon: BarChart3, grup: 'sistem' },
+  { id: 'tampilan', label: 'Tampilan', icon: Palette, grup: 'lembaga' },
+  { id: 'lembaga', label: 'Lembaga', icon: Landmark, grup: 'lembaga' },
+  { id: 'pengurus', label: 'Pengurus', icon: Users, grup: 'lembaga' },
+  { id: 'kas', label: 'Kas', icon: Wallet, grup: 'keuangan' },
+  { id: 'kepanitiaan', label: 'Kepanitiaan', icon: ClipboardList, grup: 'konten' },
+  { id: 'donatur', label: 'Donatur', icon: HeartHandshake, grup: 'keuangan' },
+  { id: 'berita', label: 'Berita', icon: Megaphone, grup: 'konten' },
+  { id: 'kegiatan', label: 'Kegiatan', icon: CalendarDays, grup: 'konten' },
+  { id: 'rutin', label: 'Rutin', icon: Repeat, grup: 'konten' },
+  { id: 'galeri', label: 'Galeri', icon: ImageIcon, grup: 'konten' },
+  { id: 'cadangan', label: 'Cadangan', icon: DatabaseBackup, grup: 'sistem' },
+  { id: 'admin', label: 'Admin', icon: ShieldCheck, grup: 'sistem', pemilik: true }, // hanya pemilik
+];
+
+// Urutan & judul kelompok di menu samping
+const GRUP = [
+  { id: 'lembaga', label: 'Profil Yayasan' },
+  { id: 'keuangan', label: 'Keuangan' },
+  { id: 'konten', label: 'Kegiatan & Konten' },
+  { id: 'sistem', label: 'Sistem' },
 ];
 
 export default function AdminPage() {
@@ -759,6 +767,19 @@ export default function AdminPage() {
   const [user, setUser] = useState(null);
   const [ready, setReady] = useState(false);
   const [tab, setTab] = useState('profil');
+  const [menuBuka, setMenuBuka] = useState(false);
+
+  // Menu samping: tutup dengan Esc, dan kunci scroll halaman saat terbuka
+  useEffect(() => {
+    if (!menuBuka) return undefined;
+    const onKey = (e) => { if (e.key === 'Escape') setMenuBuka(false); };
+    window.addEventListener('keydown', onKey);
+    const lama = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    return () => { window.removeEventListener('keydown', onKey); document.body.style.overflow = lama; };
+  }, [menuBuka]);
+
+  const pilihTab = (id) => { setTab(id); setMenuBuka(false); window.scrollTo({ top: 0 }); };
 
   useEffect(() => {
     let batal = false;
@@ -781,25 +802,60 @@ export default function AdminPage() {
 
   return (
     <div className="min-h-screen">
-      <header className="border-b bg-white">
-        <div className="mx-auto flex max-w-5xl items-center justify-between px-4 py-3">
-          <h1 className="font-bold text-brand-800">Dashboard Admin</h1>
-          <div className="flex items-center gap-2">
+      <header className="sticky top-0 z-30 border-b bg-white">
+        <div className="mx-auto flex max-w-5xl items-center justify-between gap-2 px-4 py-3">
+          <div className="flex min-w-0 items-center gap-2">
+            <button type="button" className="btn-light shrink-0" aria-label="Buka menu" aria-expanded={menuBuka} aria-controls="menu-admin" onClick={() => setMenuBuka(true)}>
+              <Menu size={18} />
+            </button>
+            <div className="min-w-0 leading-tight">
+              <h1 className="truncate font-bold text-brand-800">Dashboard Admin</h1>
+              <p className="truncate text-xs text-slate-500">{TABS.find((t) => t.id === tab)?.label}</p>
+            </div>
+          </div>
+          <div className="flex shrink-0 items-center gap-2">
             <span className="hidden text-xs text-slate-500 sm:block">{user?.email}</span>
-            <Link href="/" className="btn-light"><Home size={14} /></Link>
-            <button className="btn-light" onClick={async () => { await signOut(getAuthInstance()); router.replace('/login'); }}><LogOut size={14} /> Keluar</button>
+            <Link href="/" className="btn-light" aria-label="Beranda"><Home size={14} /></Link>
+            <button className="btn-light" aria-label="Keluar" onClick={async () => { await signOut(getAuthInstance()); router.replace('/login'); }}><LogOut size={14} /> <span className="hidden sm:inline">Keluar</span></button>
           </div>
         </div>
       </header>
-      <main className="mx-auto max-w-5xl space-y-6 px-4 py-6">
-        <div className="flex gap-2 overflow-x-auto">
-          {TABS.filter((t) => !t.pemilik || isOwnerEmail(user?.email)).map((t) => (
-            <button key={t.id} onClick={() => setTab(t.id)}
-              className={`flex shrink-0 items-center gap-2 rounded-lg px-4 py-2 text-sm font-medium ${tab === t.id ? 'bg-brand-700 text-white' : 'bg-white hover:bg-slate-100'}`}>
-              <t.icon size={16} /> {t.label}
-            </button>
-          ))}
+
+      {/* Menu samping (hamburger): daftar menu urut dari atas ke bawah */}
+      {menuBuka && (
+        <div className="fixed inset-0 z-40">
+          <button type="button" aria-label="Tutup menu" className="absolute inset-0 bg-black/40" onClick={() => setMenuBuka(false)} />
+          <nav id="menu-admin" aria-label="Menu admin" className="absolute inset-y-0 left-0 flex w-72 max-w-[85vw] flex-col bg-white shadow-xl">
+            <div className="flex items-center justify-between border-b px-4 py-3">
+              <span className="font-bold text-brand-800">Menu</span>
+              <button type="button" className="btn-light" aria-label="Tutup menu" onClick={() => setMenuBuka(false)}><X size={16} /></button>
+            </div>
+            <div className="flex-1 space-y-4 overflow-y-auto p-3">
+              {GRUP.map((g) => {
+                const items = TABS.filter((t) => t.grup === g.id && (!t.pemilik || isOwnerEmail(user?.email)));
+                if (!items.length) return null;
+                return (
+                  <section key={g.id} aria-label={g.label}>
+                    <h2 className="px-3 pb-1 text-xs font-semibold uppercase tracking-wide text-slate-400">{g.label}</h2>
+                    <ul className="space-y-1">
+                      {items.map((t) => (
+                        <li key={t.id}>
+                          <button type="button" onClick={() => pilihTab(t.id)} aria-current={tab === t.id ? 'page' : undefined}
+                            className={`flex w-full items-center gap-3 rounded-lg px-3 py-3 text-left text-sm font-medium ${tab === t.id ? 'bg-brand-700 text-white' : 'text-slate-700 hover:bg-slate-100'}`}>
+                            <t.icon size={18} /> {t.label}
+                          </button>
+                        </li>
+                      ))}
+                    </ul>
+                  </section>
+                );
+              })}
+            </div>
+            <div className="truncate border-t px-4 py-3 text-xs text-slate-500">{user?.email}</div>
+          </nav>
         </div>
+      )}
+      <main className="mx-auto max-w-5xl space-y-6 px-4 py-6">
         {tab === 'profil' && <ProfileTab />}
         {tab === 'statistik' && <AdminStatistik />}
         {tab === 'tampilan' && <TampilanTab />}
