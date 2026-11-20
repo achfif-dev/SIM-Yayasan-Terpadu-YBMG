@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from 'react';
 import { Timestamp, addDoc, collection, doc, getDocs, serverTimestamp, writeBatch } from 'firebase/firestore';
 import { AlertTriangle, DatabaseBackup, Download, Loader2, Upload } from 'lucide-react';
 import { getAuthInstance, getDb } from '../lib/firebase';
-import { KOLEKSI, buatBerkas, hariSejak, hidupkan, namaBerkas, periksaBerkas, serial } from '../lib/cadangan';
+import { KOLEKSI, buatBerkas, hariSejak, namaBerkas, periksaBerkas, serial, susunOperasi } from '../lib/cadangan';
 
 const KUNCI = 'cadangan_terakhir';
 const BATCH = 400; // batas Firestore 500 operasi per batch
@@ -30,10 +30,19 @@ export default function AdminCadangan({ isOwner = false }) {
         setStatus(`Membaca ${k.label}…`);
         try {
           const s = await getDocs(collection(getDb(), k.id));
-          hasil[k.id] = s.docs.map((d) => ({ id: d.id, data: serial(d.data()) }));
+          const arr = [];
+          for (const d of s.docs) {
+            const item = { id: d.id, data: serial(d.data()) };
+            if (k.sub) { // mis. kas kegiatan: panitia/<id>/kas
+              const ss = await getDocs(collection(getDb(), k.id, d.id, k.sub));
+              item[k.sub] = ss.docs.map((x) => ({ id: x.id, data: serial(x.data()) }));
+            }
+            arr.push(item);
+          }
+          hasil[k.id] = arr;
         } catch (e) { gagal.push(`${k.label} (${e.code || e.message})`); }
       }
-      const total = Object.values(hasil).reduce((n, a) => n + a.length, 0);
+      const total = Object.entries(hasil).reduce((n, [kid, a]) => { const sub = KOLEKSI.find((x) => x.id === kid)?.sub; return n + a.length + (sub ? a.reduce((m, d) => m + (d[sub]?.length || 0), 0) : 0); }, 0);
       const proyek = process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID || '';
       const blob = new Blob([JSON.stringify(buatBerkas(hasil, proyek))], { type: 'application/json' });
       const url = URL.createObjectURL(blob);
@@ -66,14 +75,11 @@ export default function AdminCadangan({ isOwner = false }) {
     let tulis = 0;
     try {
       const db = getDb();
-      const ops = [];
-      for (const r of berkas.hasil.ringkasan.filter((x) => x.pulihkan)) {
-        for (const d of berkas.data.koleksi[r.id]) ops.push([r.id, d.id, hidupkan(d.data, Timestamp.fromMillis)]);
-      }
+      const ops = susunOperasi(berkas.data, Timestamp.fromMillis);
       for (let i = 0; i < ops.length; i += BATCH) {
         setStatus(`Memulihkan… ${i}/${ops.length}`);
         const b = writeBatch(db);
-        ops.slice(i, i + BATCH).forEach(([col, id, data]) => b.set(doc(db, col, id), data));
+        ops.slice(i, i + BATCH).forEach((o) => b.set(doc(db, ...o.path), o.data));
         await b.commit();
         tulis += Math.min(BATCH, ops.length - i);
       }
@@ -105,7 +111,7 @@ export default function AdminCadangan({ isOwner = false }) {
             </label>
           ))}
         </div>
-        <p className="text-xs text-slate-500">Setiap dokumen yang dibaca dihitung 1 pembacaan Firestore (batas gratis 50.000/hari), jadi aman dilakukan beberapa kali sebulan.</p>
+        <p className="text-xs text-slate-500">Setiap dokumen yang dibaca (termasuk catatan kas kegiatan) dihitung 1 pembacaan Firestore (batas gratis 50.000/hari), jadi aman dilakukan beberapa kali sebulan. Foto nota yang tersimpan di Cloudinary tidak ikut terunduh; yang ikut hanya tautannya.</p>
         <button className="btn" onClick={unduh} disabled={busy || !daftar.some((k) => pilih[k.id])}>
           {busy ? <Loader2 size={14} className="animate-spin" /> : <Download size={14} />} Unduh cadangan (.json)
         </button>
@@ -125,7 +131,7 @@ export default function AdminCadangan({ isOwner = false }) {
             )}
             <ul className="grid gap-1 sm:grid-cols-2">
               {berkas.hasil.ringkasan.map((r) => (
-                <li key={r.id} className={r.pulihkan ? '' : 'text-slate-400 line-through'}>{r.label}: <b>{r.jumlah}</b>{!r.pulihkan && ' (dilewati)'}</li>
+                <li key={r.id} className={r.pulihkan ? '' : 'text-slate-400 line-through'}>{r.label}: <b>{r.jumlah}</b>{r.sub > 0 && ` + ${r.sub} catatan ${r.subNama}`}{!r.pulihkan && ' (dilewati)'}</li>
               ))}
             </ul>
             <div className="flex flex-wrap items-center gap-2">
