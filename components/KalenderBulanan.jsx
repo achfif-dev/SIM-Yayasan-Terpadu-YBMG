@@ -10,9 +10,10 @@ import { BULAN_HIJRI, BULAN_NAMA, HARI_NAMA, hijri, parseTgl, polaTeks, tglHijri
 const HARI_SINGKAT = ['Min', 'Sen', 'Sel', 'Rab', 'Kam', 'Jum', 'Sab'];
 const BULAN_SINGKAT = ['Jan', 'Feb', 'Mar', 'Apr', 'Mei', 'Jun', 'Jul', 'Agu', 'Sep', 'Okt', 'Nov', 'Des'];
 const HIJRI_SINGKAT = ['Muharram', 'Safar', 'Rab. Awal', 'Rab. Akhir', 'Jum. Awal', 'Jum. Akhir', 'Rajab', "Sya'ban", 'Ramadan', 'Syawal', "Dzul-Qa'dah", 'Dzul-Hijjah'];
+// Label sengaja pendek: lebar <select> mengikuti opsi terpanjang, dan label panjang pernah membuat kalender terpotong di HP.
 const GESER = [
   { v: '0', label: 'Umm al-Qura (bawaan)' },
-  { v: '-1', label: 'Sehari lebih lambat (Kemenag RI sering begini)' },
+  { v: '-1', label: 'Sehari lebih lambat' },
   { v: '1', label: 'Sehari lebih cepat' },
 ];
 const KUNCI_GESER = 'kalender_geser_hijriah';
@@ -94,19 +95,19 @@ export default function KalenderBulanan({ tunggal = [], rutin = [], hariIni, awa
 
   const daftar = peta[pilih] || [];
   const hijriPilih = dukungHijri ? tglHijriTeks(pilih, geser) : '';
-  const nav = 'rounded-lg border border-slate-300 bg-white p-2 hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-40';
+  const nav = 'shrink-0 rounded-lg border border-slate-300 bg-white p-2 hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-40';
   const seg = (aktif) => `px-3 py-1.5 text-xs font-semibold sm:text-sm ${aktif ? 'bg-brand-700 text-white' : 'bg-white text-slate-700 hover:bg-slate-100'}`;
 
   return (
-    <div className="grid gap-6 lg:grid-cols-3">
-      <div className="rounded-card border bg-white p-3 sm:p-5 lg:col-span-2">
+    <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
+      <div className="min-w-0 rounded-card border bg-white p-2 sm:p-5 lg:col-span-2">
         {dukungHijri && (
           <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
-            <div className="inline-flex overflow-hidden rounded-lg border border-slate-300" role="group" aria-label="Jenis kalender">
+            <div className="inline-flex shrink-0 overflow-hidden rounded-lg border border-slate-300" role="group" aria-label="Jenis kalender">
               <button type="button" className={seg(mode === 'masehi')} onClick={() => ubahMode('masehi')} aria-pressed={mode === 'masehi'}>Masehi</button>
               <button type="button" className={`border-l border-slate-300 ${seg(mode === 'hijriah')}`} onClick={() => ubahMode('hijriah')} aria-pressed={mode === 'hijriah'}>Hijriah</button>
             </div>
-            <select aria-label="Koreksi kalender Hijriah" className="inp !w-auto !py-1.5 text-xs" value={geser} onChange={(e) => ubahGeser(e.target.value)}>
+            <select aria-label="Koreksi kalender Hijriah" className="inp min-w-0 !w-full !py-1.5 text-xs sm:!w-auto sm:max-w-full" value={geser} onChange={(e) => ubahGeser(e.target.value)}>
               {GESER.map((g) => <option key={g.v} value={g.v}>Hijriah: {g.label}</option>)}
             </select>
           </div>
@@ -114,18 +115,18 @@ export default function KalenderBulanan({ tunggal = [], rutin = [], hariIni, awa
 
         <div className="mb-3 flex items-center justify-between gap-2">
           <button type="button" className={nav} onClick={() => pindah(-1)} disabled={!bisaMundur} aria-label={hijriMode ? 'Bulan Hijriah sebelumnya' : 'Bulan sebelumnya'}><ChevronLeft size={18} /></button>
-          <div className="text-center">
-            <p className="text-lg font-bold text-brand-800">{judulUtama}</p>
+          <div className="min-w-0 flex-1 text-center">
+            <p className="text-base font-bold leading-snug text-brand-800 sm:text-lg">{judulUtama}</p>
             {judulKecil && <p className="text-xs text-slate-500">{judulKecil}</p>}
             {!diBulanIni && <button type="button" className="text-xs font-semibold text-brand-700 hover:underline" onClick={keHariIni}>Kembali ke hari ini</button>}
           </div>
           <button type="button" className={nav} onClick={() => pindah(1)} disabled={!bisaMaju} aria-label={hijriMode ? 'Bulan Hijriah berikutnya' : 'Bulan berikutnya'}><ChevronRight size={18} /></button>
         </div>
 
-        <div className="grid grid-cols-7 gap-1 text-center text-xs font-semibold uppercase tracking-wide text-slate-500">
-          {HARI_SINGKAT.map((h, i) => <div key={h} className={i === 0 ? 'text-red-600' : ''}>{h}</div>)}
+        <div className="grid grid-cols-7 gap-0.5 text-center text-[10px] font-semibold uppercase text-slate-500 sm:gap-1 sm:text-xs sm:tracking-wide">
+          {HARI_SINGKAT.map((h, i) => <div key={h} className={`min-w-0 ${i === 0 ? 'text-red-600' : ''}`}>{h}</div>)}
         </div>
-        <div className="mt-1 grid grid-cols-7 gap-1" role="grid" aria-label={`Kalender ${judulUtama}`}>
+        <div className="mt-1 grid grid-cols-7 gap-0.5 sm:gap-1" role="grid" aria-label={`Kalender ${judulUtama}`}>
           {minggu.flat().map((tgl, i) => {
             const d = parseTgl(tgl);
             const h = dukungHijri ? hijri(d, geser) : null;
@@ -137,17 +138,24 @@ export default function KalenderBulanan({ tunggal = [], rutin = [], hariIni, awa
             const utama = hijriMode ? (h ? h.d : d.getDate()) : d.getDate();
             const kecil = hijriMode ? (d.getDate() === 1 ? `1 ${BULAN_SINGKAT[d.getMonth()]}` : d.getDate()) : (h ? (h.d === 1 ? `1 ${HIJRI_SINGKAT[h.m - 1]}` : h.d) : null);
             const awalBulanBaru = hijriMode ? false : h?.d === 1;
+            const kecilPendek = hijriMode ? d.getDate() : (h ? h.d : null); // HP: sel sempit, cukup angka
+            const tebal = awalBulanBaru || (hijriMode && d.getDate() === 1);
             return (
               <button key={tgl} type="button" role="gridcell" aria-selected={dipilih}
                 aria-label={`${hariTgl(tgl)}${h ? `, ${h.d} ${BULAN_HIJRI[h.m - 1]} ${h.y} H` : ''}${aktif.length ? `, ${aktif.length} kegiatan` : ''}`}
                 onClick={() => setPilih(tgl)}
-                className={`flex min-h-[3.6rem] flex-col items-stretch rounded-lg border p-1 text-left transition sm:min-h-[5.8rem] sm:p-1.5 ${dipilih ? 'border-brand-700 bg-brand-50 ring-1 ring-brand-700' : 'border-slate-200 hover:bg-slate-50'} ${dalam ? '' : 'opacity-40'}`}>
-                <span className="flex items-start justify-between gap-1">
+                className={`flex min-h-[3.6rem] min-w-0 flex-col items-stretch overflow-hidden rounded-lg border p-0.5 text-left transition sm:min-h-[5.8rem] sm:p-1.5 ${dipilih ? 'border-brand-700 bg-brand-50 ring-1 ring-brand-700' : 'border-slate-200 hover:bg-slate-50'} ${dalam ? '' : 'opacity-40'}`}>
+                <span className="flex flex-col items-center sm:flex-row sm:items-start sm:justify-between sm:gap-1">
                   <span className={`inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-xs font-semibold sm:text-sm ${hari ? 'bg-brand-700 text-white' : i % 7 === 0 ? 'text-red-600' : 'text-slate-700'}`}>{utama}</span>
-                  {kecil !== null && <span className={`min-w-0 truncate pt-0.5 text-[10px] leading-4 ${awalBulanBaru || (hijriMode && d.getDate() === 1) ? 'font-semibold text-emerald-700' : 'text-slate-400'}`}>{kecil}</span>}
+                  {kecil !== null && (
+                    <span className={`min-w-0 text-[10px] leading-3 sm:truncate sm:pt-0.5 sm:leading-4 ${tebal ? 'font-semibold text-emerald-700' : 'text-slate-400'}`}>
+                      <span className="sm:hidden">{kecilPendek}</span>
+                      <span className="hidden sm:inline">{kecil}</span>
+                    </span>
+                  )}
                 </span>
                 {/* HP: titik penanda; layar lebar: judul singkat */}
-                <span className="mt-auto flex flex-wrap gap-0.5 pt-1 sm:hidden">
+                <span className="mt-auto flex flex-wrap justify-center gap-0.5 pt-1 sm:hidden">
                   {aktif.slice(0, 4).map((x) => <span key={x.kunci} className={`h-1.5 w-1.5 rounded-full ${x.tipe === 'rutin' ? 'bg-amber-500' : 'bg-brand-700'}`} />)}
                 </span>
                 <span className="mt-1 hidden space-y-0.5 sm:block">
@@ -166,11 +174,11 @@ export default function KalenderBulanan({ tunggal = [], rutin = [], hariIni, awa
           <span className="flex items-center gap-1.5"><span className="h-2.5 w-2.5 rounded-full bg-amber-500" /> Kegiatan rutin</span>
           {dukungHijri && <span>{hijriMode ? 'Angka kecil = tanggal Masehi' : 'Angka kecil = tanggal Hijriah'}</span>}
         </div>
-        {dukungHijri && <p className="mt-1 text-xs text-slate-400">Tanggal Hijriah dihitung dari tabel kalender (bukan hasil rukyat/sidang isbat) dan bisa berbeda sehari; sesuaikan lewat pilihan koreksi di atas.</p>}
+        {dukungHijri && <p className="mt-1 text-xs text-slate-400">Tanggal Hijriah dihitung dari tabel kalender (bukan hasil rukyat/sidang isbat) dan bisa berbeda sehari; penetapan Kemenag RI sering sehari lebih lambat, sesuaikan lewat pilihan koreksi di atas.</p>}
         {(hijriMode ? awalH <= awalData : bandingBulan(bln, bulanMin) === 0) && <p className="mt-1 text-xs text-slate-400">Kegiatan sekali jalan yang lebih lama dari 30 hari lalu tidak ditampilkan; kegiatan rutin tetap dihitung.</p>}
       </div>
 
-      <div className="space-y-3 lg:sticky lg:top-4 lg:self-start">
+      <div className="min-w-0 space-y-3 lg:sticky lg:top-4 lg:self-start">
         <div>
           <p className="flex items-center gap-2 font-bold text-brand-800"><CalendarDays size={16} /> {hariTgl(pilih)}</p>
           {hijriPilih && <p className="pl-6 text-xs text-slate-500">{hijriPilih}</p>}
@@ -179,7 +187,7 @@ export default function KalenderBulanan({ tunggal = [], rutin = [], hariIni, awa
         {daftar.map((x) => (
           <div key={x.kunci} className={`rounded-card border bg-white p-4 text-sm ${x.libur ? 'opacity-60' : ''}`}>
             <div className="flex items-start justify-between gap-2">
-              <p className={`font-bold ${x.libur ? 'line-through' : ''}`}>{x.judul}</p>
+              <p className={`min-w-0 break-words font-bold ${x.libur ? 'line-through' : ''}`}>{x.judul}</p>
               <span className={`shrink-0 rounded-full px-2 py-0.5 text-xs font-semibold ${x.libur ? 'bg-slate-100 text-slate-600' : x.tipe === 'rutin' ? 'bg-amber-100 text-amber-800' : 'bg-brand-100 text-brand-800'}`}>
                 {x.libur ? 'Ditiadakan' : x.tipe === 'rutin' ? 'Rutin' : 'Sekali jalan'}
               </span>
@@ -188,7 +196,7 @@ export default function KalenderBulanan({ tunggal = [], rutin = [], hariIni, awa
             {jamTeks(x) && <p className="mt-0.5 flex items-center gap-1.5 text-slate-500"><Clock size={13} /> {jamTeks(x)}</p>}
             {x.lokasi && <p className="flex items-center gap-1.5 text-slate-500"><MapPin size={13} /> {x.lokasi}</p>}
             <p className="mt-1.5 text-xs text-slate-500">{x.lembaga || 'Umum'}</p>
-            {x.deskripsi && <p className="mt-2 whitespace-pre-line text-slate-600">{x.deskripsi}</p>}
+            {x.deskripsi && <p className="mt-2 whitespace-pre-line break-words text-slate-600">{x.deskripsi}</p>}
             {!x.libur && pilih >= hariIni && aksi?.(x)}
           </div>
         ))}

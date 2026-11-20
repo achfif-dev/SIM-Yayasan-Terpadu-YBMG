@@ -151,7 +151,7 @@ export default function Konten({ institutions = [], showBerita = true, showGaler
 
   const names = institutions.map((i) => i.namaLembaga).filter(Boolean).sort();
   const Filter = (
-    <select aria-label="Filter lembaga" className="inp !w-auto" value={lembaga} onChange={(e) => { setLembaga(e.target.value); setAnnShow(6); setGalShow(12); }}>
+    <select aria-label="Filter lembaga" className="inp !w-auto max-w-full" value={lembaga} onChange={(e) => { setLembaga(e.target.value); setAnnShow(6); setGalShow(12); }}>
       <option value="Semua">Semua lembaga</option>
       <option value="Umum">Umum (yayasan)</option>
       {names.map((n) => <option key={n} value={n}>{n}</option>)}
