@@ -72,15 +72,15 @@ export default function LaporanKas({ trx, namaYayasan = 'Yayasan', statusHukum =
           <p className="text-sm text-slate-500">{unit === 'Semua' ? 'Seluruh bidang' : `Kas ${unit}`} · {periodLabel(tahun, bulan)}</p>
         </div>
         <div className="flex flex-wrap gap-2">
-          <select aria-label="Bidang" className="inp !w-auto" value={unit} onChange={(e) => setUnit(e.target.value)}>
+          <select aria-label="Bidang" className="inp min-w-0 max-w-full !w-auto" value={unit} onChange={(e) => setUnit(e.target.value)}>
             {['Semua', ...UNITS].map((u) => <option key={u} value={u}>{u === 'Semua' ? 'Semua bidang' : u}</option>)}
           </select>
-          <select aria-label="Tahun" className="inp !w-auto" value={String(tahun)}
+          <select aria-label="Tahun" className="inp min-w-0 max-w-full !w-auto" value={String(tahun)}
             onChange={(e) => { const v = e.target.value; setTahunSel(v === 'Semua' ? 'Semua' : Number(v)); if (v === 'Semua') setBulan('Semua'); setLimit(15); }}>
             <option value="Semua">Semua tahun</option>
             {years.map((y) => <option key={y} value={y}>{y}</option>)}
           </select>
-          <select aria-label="Bulan" className="inp !w-auto" value={String(bulan)} disabled={tahun === 'Semua'}
+          <select aria-label="Bulan" className="inp min-w-0 max-w-full !w-auto" value={String(bulan)} disabled={tahun === 'Semua'}
             onChange={(e) => { setBulan(e.target.value === 'Semua' ? 'Semua' : Number(e.target.value)); setLimit(15); }}>
             <option value="Semua">Semua bulan</option>
             {BULAN.map((b, i) => <option key={b} value={i + 1}>{b}</option>)}
@@ -95,20 +95,20 @@ export default function LaporanKas({ trx, namaYayasan = 'Yayasan', statusHukum =
           ['Pengeluaran', report.keluar, 'text-red-600'],
           ['Saldo akhir', report.saldoAkhir, 'text-brand-800'],
         ].map(([l, v, c]) => (
-          <div key={l} className="rounded-xl border bg-slate-50 p-4">
+          <div key={l} className="min-w-0 rounded-xl border bg-slate-50 p-3 sm:p-4">
             <p className="text-xs text-slate-500">{l}</p>
-            <p className={`mt-1 text-lg font-extrabold ${c}`}>{rupiah(v)}</p>
+            <p className={`mt-1 break-words text-base font-extrabold sm:text-lg ${c}`}>{rupiah(v)}</p>
           </div>
         ))}
       </div>
 
-      <div className="grid gap-6 lg:grid-cols-2">
-        <div className="rounded-card border bg-slate-50 p-5">
+      <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
+        <div className="min-w-0 rounded-card border bg-slate-50 p-4 sm:p-5">
           <h4 className="mb-3 font-bold">{tahun === 'Semua' ? 'Per tahun' : `Per bulan, ${tahun}`}</h4>
           <Legend />
           <TimeChart buckets={report.buckets} />
         </div>
-        <div className="rounded-card border bg-slate-50 p-5">
+        <div className="min-w-0 rounded-card border bg-slate-50 p-4 sm:p-5">
           <h4 className="mb-3 font-bold">Per bidang · {periodLabel(tahun, bulan)}</h4>
           <Legend />
           <UnitChart data={report.perUnit} />

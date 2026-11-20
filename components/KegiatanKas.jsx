@@ -87,9 +87,9 @@ export default function KegiatanKas({ k, kas, h, onReload }) {
   return (
     <div className="space-y-5">
       <div className="grid grid-cols-3 gap-2 text-center">
-        <div className="rounded-xl bg-white p-3 shadow-sm"><p className="text-xs text-slate-500">Pemasukan</p><p className="font-bold text-emerald-700">{rupiah(h.masuk)}</p></div>
-        <div className="rounded-xl bg-white p-3 shadow-sm"><p className="text-xs text-slate-500">Pengeluaran</p><p className="font-bold text-red-600">{rupiah(h.keluar)}</p></div>
-        <div className="rounded-xl bg-white p-3 shadow-sm"><p className="text-xs text-slate-500">Sisa dana</p><p className={`font-bold ${h.saldo < 0 ? 'text-red-600' : 'text-brand-800'}`}>{rupiah(h.saldo)}</p></div>
+        <div className="min-w-0 rounded-xl bg-white p-3 shadow-sm"><p className="text-xs text-slate-500">Pemasukan</p><p className="break-words text-sm font-bold text-emerald-700 sm:text-base">{rupiah(h.masuk)}</p></div>
+        <div className="min-w-0 rounded-xl bg-white p-3 shadow-sm"><p className="text-xs text-slate-500">Pengeluaran</p><p className="break-words text-sm font-bold text-red-600 sm:text-base">{rupiah(h.keluar)}</p></div>
+        <div className="min-w-0 rounded-xl bg-white p-3 shadow-sm"><p className="text-xs text-slate-500">Sisa dana</p><p className={`break-words text-sm font-bold sm:text-base ${h.saldo < 0 ? 'text-red-600' : 'text-brand-800'}`}>{rupiah(h.saldo)}</p></div>
       </div>
 
       <form onSubmit={simpan} className="space-y-4 rounded-2xl bg-white p-5 shadow-sm">

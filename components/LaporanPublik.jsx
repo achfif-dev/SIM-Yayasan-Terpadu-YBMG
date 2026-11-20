@@ -11,7 +11,7 @@ import { pdfLPJ } from '../lib/pdfdoc';
 import { BuktiModal } from './Bukti';
 import PdfAksi from './PdfAksi';
 
-const Kartu = ({ t, v, w = '' }) => (<div className="rounded-xl bg-white p-3 text-center shadow-sm"><p className="text-xs text-slate-500">{t}</p><p className={`text-sm font-bold sm:text-base ${w}`}>{v}</p></div>);
+const Kartu = ({ t, v, w = '' }) => (<div className="min-w-0 rounded-xl bg-white p-3 text-center shadow-sm"><p className="text-xs text-slate-500">{t}</p><p className={`break-words text-sm font-bold sm:text-base ${w}`}>{v}</p></div>);
 
 export default function LaporanPublik() {
   const [k, setK] = useState(null);
