@@ -1,6 +1,7 @@
 import './globals.css';
 import { THEME_BOOT_SCRIPT } from '../lib/tampilan';
 import Splash from '../components/Splash';
+import PwaRegister from '../components/PwaRegister';
 
 const FALLBACK_TITLE = 'Sistem Informasi Yayasan Terpadu';
 const FALLBACK_DESC = 'Sistem informasi manajemen yayasan: keagamaan, sosial, dan kemanusiaan.';
@@ -41,6 +42,13 @@ function shareImage(url) {
   return url;
 }
 
+export const viewport = {
+  themeColor: '#047857',
+  width: 'device-width',
+  initialScale: 1,
+  viewportFit: 'cover',
+};
+
 export async function generateMetadata() {
   const p = await fetchProfile();
   const title = p?.namaYayasan || FALLBACK_TITLE;
@@ -52,6 +60,10 @@ export async function generateMetadata() {
     description,
     openGraph: { title, description, type: 'website', siteName: title, locale: 'id_ID' },
     twitter: { card: 'summary', title, description },
+    manifest: '/manifest.webmanifest',
+    applicationName: title,
+    appleWebApp: { capable: true, title: title.length <= 14 ? title : 'YBMG', statusBarStyle: 'default' },
+    formatDetection: { telephone: false },
   };
   // Tanpa logo valid: tidak diisi, sehingga Next memakai app/opengraph-image.png sebagai cadangan
   if (img) {
@@ -75,6 +87,7 @@ export default async function RootLayout({ children }) {
       <body>
         <Splash logo={logoAman(p?.logoUrl)} nama={p?.namaYayasan || ''} status={p?.statusHukum || ''} />
         {children}
+        <PwaRegister />
       </body>
     </html>
   );
