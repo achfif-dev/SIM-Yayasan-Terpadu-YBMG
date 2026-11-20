@@ -2,15 +2,19 @@
 
 import { useCallback, useEffect, useState } from 'react';
 import { collection, deleteDoc, doc, getDocs, limit, orderBy, query, serverTimestamp, setDoc, updateDoc } from 'firebase/firestore';
-import { Copy, Loader2, MessageCircle, Plus, Trash2 } from 'lucide-react';
+import { CheckCircle2, Copy, Loader2, MessageCircle, Plus, Trash2 } from 'lucide-react';
 import { getAuthInstance, getDb } from '../lib/firebase';
 import { bukaWA, salinTeks } from '../lib/bagikan';
 import { JENIS_DONASI, rupiah, teksTerimaKasih, tglHariIni, tglPanjang } from '../lib/kegiatan';
 import { muatProfil } from '../lib/profil';
+import { BIDANG } from '../lib/bidang';
+import { kategoriEfektif, urutkanLembaga, validasiKas } from '../lib/lembaga';
+import { catatDonasiUmum, cabutDonasiUmum } from '../lib/donasiKas';
 import { pdfTerimaKasih } from '../lib/pdfdoc';
 import PdfAksi from './PdfAksi';
 
-const KOSONG = () => ({ nama: '', hp: '', jenis: 'Infaq', jumlah: '', tanggal: tglHariIni(), kegiatanId: '', samar: false, pesan: '' });
+// catatKas/bidang/unitId/tampilNama hanya berlaku untuk sumbangan UMUM (tanpa kegiatan); bidang sengaja kosong = admin wajib memilih.
+const KOSONG = () => ({ nama: '', hp: '', jenis: 'Infaq', jumlah: '', tanggal: tglHariIni(), kegiatanId: '', samar: false, pesan: '', catatKas: true, bidang: '', unitId: '', tampilNama: false });
 const JENIS_KAS = { Infaq: 'Infaq', Shodaqoh: 'Shodaqoh', 'Infaq & Shodaqoh': 'Infaq' };
 
 function Ucapan({ d, profil, ttd, onKirim }) {
@@ -48,13 +52,20 @@ export default function AdminDonatur() {
   const [list, setList] = useState(null);
   const [kegiatan, setKegiatan] = useState([]);
   const [pengurus, setPengurus] = useState([]);
+  const [inst, setInst] = useState([]);
   const [profil, setProfil] = useState({ namaYayasan: 'Yayasan' });
   const [ttd, setTtd] = useState('');
   const [aktif, setAktif] = useState(null);
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState('');
 
-  useEffect(() => { try { setTtd(localStorage.getItem('ybmg_ttd') || ''); } catch (e) { /* abaikan */ } }, []);
+  useEffect(() => {
+    try {
+      setTtd(localStorage.getItem('ybmg_ttd') || '');
+      const b = localStorage.getItem('ybmg_bidang_umum');
+      if (BIDANG.includes(b)) setF((p) => (p.bidang ? p : { ...p, bidang: b }));
+    } catch (e) { /* abaikan */ }
+  }, []);
   const ubahTtd = (v) => { setTtd(v); try { localStorage.setItem('ybmg_ttd', v); } catch (e) { /* abaikan */ } };
 
   const muat = useCallback(async () => {
@@ -67,6 +78,7 @@ export default function AdminDonatur() {
     muat();
     muatProfil().then(setProfil);
     getDocs(collection(getDb(), 'panitia')).then((s) => setKegiatan(s.docs.map((d) => ({ id: d.id, ...d.data() })).filter((x) => x.status !== 'Selesai').sort((a, b) => String(b.tanggal || '').localeCompare(String(a.tanggal || ''))))).catch(() => {});
+    getDocs(collection(getDb(), 'institutions')).then((s) => setInst(s.docs.map((d) => ({ id: d.id, ...d.data() })))).catch(() => {});
     getDocs(collection(getDb(), 'board_members')).then((s) => setPengurus(s.docs.map((d) => d.data()).filter((x) => x.nama).map((x) => `${x.nama}${x.jabatan ? `, ${x.jabatan}` : ''}`))).catch(() => {});
   }, [muat]);
 
@@ -77,6 +89,12 @@ export default function AdminDonatur() {
     const jumlah = Math.round(Number(f.jumlah) || 0);
     if (!f.nama.trim()) { setMsg('Nama donatur wajib diisi'); return; }
     if (jumlah <= 0) { setMsg('Jumlah harus lebih dari 0'); return; }
+    const umumKas = !f.kegiatanId && f.catatKas;
+    if (umumKas) {
+      if (!BIDANG.includes(f.bidang)) { setMsg('Pilih Kas bidang mana yang menerima sumbangan umum ini (atau matikan “Catat otomatis ke Kas yayasan”).'); return; }
+      const salah = validasiKas({ unitId: f.unitId, kategoriUnit: f.bidang }, inst);
+      if (salah) { setMsg(salah); return; }
+    }
     setBusy(true);
     setMsg('');
     const kg = kegiatan.find((x) => x.id === f.kegiatanId);
@@ -98,9 +116,19 @@ export default function AdminDonatur() {
           catatan = `Tersimpan ✓ dan dicatat sebagai pemasukan kas ${kg.nama}`;
         } catch (er) { catatan = `Donasi tersimpan, tetapi gagal dicatat ke kas kegiatan: ${er.message}`; }
       }
+      let kasInfo = {};
+      if (umumKas) {
+        try {
+          const r = await catatDonasiUmum({ donasiId: ref.id, nama: data.nama, jenis: data.jenis, jumlah, tanggal: f.tanggal, bidang: f.bidang, unitId: f.unitId, tampilNama: f.tampilNama, oleh: me });
+          kasInfo = { kasId: r.kasId, bidang: f.bidang };
+          await updateDoc(ref, kasInfo);
+          try { localStorage.setItem('ybmg_bidang_umum', f.bidang); } catch (er) { /* abaikan */ }
+          catatan = `Tersimpan ✓ dan otomatis dicatat sebagai pemasukan Kas ${f.bidang}${r.ringkasanOk ? '' : ' (ringkasan beranda belum ikut diperbarui: buka Admin → Kas → Bangun ulang ringkasan)'}`;
+        } catch (er) { catatan = `Donasi tersimpan, tetapi gagal dicatat ke Kas yayasan: ${er.message}. Catat manual di tab Kas.`; }
+      }
       setMsg(catatan);
-      setAktif({ id: ref.id, ...data, tanggal: f.tanggal });
-      setF({ ...KOSONG(), kegiatanId: f.kegiatanId, tanggal: f.tanggal });
+      setAktif({ id: ref.id, ...data, ...kasInfo, tanggal: f.tanggal });
+      setF({ ...KOSONG(), kegiatanId: f.kegiatanId, tanggal: f.tanggal, catatKas: f.catatKas, bidang: f.bidang, unitId: f.unitId });
       await muat();
     } catch (er) { setMsg(`Gagal: ${er.message}`); }
     setBusy(false);
@@ -109,10 +137,23 @@ export default function AdminDonatur() {
   const tandaiTerkirim = async (d) => {
     try { await updateDoc(doc(getDb(), 'donations', d.id), { dikirim: true }); await muat(); } catch (e) { /* abaikan */ }
   };
+  // Donasi umum lama (dicatat sebelum fitur ini) → catat ke kas. Peringatan dobel: admin mungkin sudah mengetiknya di tab Kas.
+  const catatKeKas = async (d) => {
+    if (!BIDANG.includes(f.bidang)) { setMsg('Pilih dulu “Kas bidang” pada formulir di atas, lalu klik lagi.'); window.scrollTo({ top: 0, behavior: 'smooth' }); return; }
+    if (!confirm(`Catat ${d.nama} (${rupiah(d.jumlah)}) sebagai pemasukan Kas ${f.bidang}?\n\nPastikan sumbangan ini BELUM pernah diketik manual di tab Kas, agar saldo tidak terhitung dua kali.`)) return;
+    try {
+      const me = getAuthInstance().currentUser?.email || '';
+      const r = await catatDonasiUmum({ donasiId: d.id, nama: d.nama, jenis: d.jenis, jumlah: d.jumlah, tanggal: d.tanggal, bidang: f.bidang, unitId: f.unitId, tampilNama: false, oleh: me });
+      await updateDoc(doc(getDb(), 'donations', d.id), { kasId: r.kasId, bidang: f.bidang });
+      setMsg(`Dicatat ke Kas ${f.bidang} ✓${r.ringkasanOk ? '' : ' (ringkasan beranda belum ikut diperbarui: Admin → Kas → Bangun ulang ringkasan)'}`);
+      await muat();
+    } catch (er) { setMsg(`Gagal mencatat ke kas: ${er.message}`); }
+  };
   const hapus = async (d) => {
-    if (!confirm(`Hapus catatan donasi ${d.nama}?${d.kegiatanId ? ' Pemasukan di kas kegiatan terkait ikut dihapus.' : ''}`)) return;
+    if (!confirm(`Hapus catatan donasi ${d.nama}?${d.kegiatanId ? ' Pemasukan di kas kegiatan terkait ikut dihapus.' : ''}${d.kasId ? ` Pemasukan di Kas ${d.bidang || 'yayasan'} terkait ikut dihapus.` : ''}`)) return;
     try {
       if (d.kegiatanId) await deleteDoc(doc(getDb(), 'panitia', d.kegiatanId, 'kas', `d_${d.id}`)).catch(() => {});
+      if (d.kasId) await cabutDonasiUmum({ donasiId: d.id, oleh: getAuthInstance().currentUser?.email || '' });
       await deleteDoc(doc(getDb(), 'donations', d.id));
       if (aktif?.id === d.id) setAktif(null);
       await muat();
@@ -121,7 +162,7 @@ export default function AdminDonatur() {
 
   return (
     <div className="space-y-5">
-      <p className="rounded-xl bg-brand-50 p-4 text-sm text-brand-900">Catat sumbangan infaq / shodaqoh, lalu langsung buat <b>ucapan terima kasih</b> (teks WhatsApp atau PDF). Bila dipilih untuk sebuah kegiatan, sumbangan otomatis masuk ke kas kegiatan itu. Untuk sumbangan umum yayasan, catat juga di tab <b>Kas</b>. Nomor WhatsApp donatur hanya tersimpan di sini (tidak tampil di laporan publik).</p>
+      <p className="rounded-xl bg-brand-50 p-4 text-sm text-brand-900">Catat sumbangan infaq / shodaqoh, lalu langsung buat <b>ucapan terima kasih</b> (teks WhatsApp atau PDF). Bila dipilih untuk sebuah kegiatan, sumbangan otomatis masuk ke kas kegiatan itu. Untuk sumbangan <b>umum yayasan</b>, sumbangan otomatis masuk ke <b>Kas</b> bidang yang dipilih (tidak perlu mengetik lagi di tab Kas) dan ringkasan beranda ikut diperbarui. Nomor WhatsApp donatur hanya tersimpan di sini (tidak tampil di laporan publik).</p>
 
       <form onSubmit={simpan} className="space-y-4 rounded-2xl bg-white p-5 shadow-sm">
         <h3 className="font-bold">Sumbangan baru</h3>
@@ -136,6 +177,23 @@ export default function AdminDonatur() {
             <select className="inp" value={f.kegiatanId} onChange={(e) => set({ kegiatanId: e.target.value })}><option value="">Umum (yayasan)</option>{kegiatan.map((x) => <option key={x.id} value={x.id}>{x.nama}</option>)}</select></div>
           {f.kegiatanId && (
             <label className="flex items-center gap-2 text-sm sm:col-span-2"><input type="checkbox" checked={f.samar} onChange={(e) => set({ samar: e.target.checked })} /> Tampilkan sebagai “Hamba Allah” di laporan kegiatan</label>
+          )}
+          {!f.kegiatanId && (
+            <div className="space-y-3 rounded-xl border border-brand-100 bg-brand-50/50 p-3 sm:col-span-2">
+              <label className="flex items-center gap-2 text-sm font-medium"><input type="checkbox" checked={f.catatKas} onChange={(e) => set({ catatKas: e.target.checked })} /> Catat otomatis ke Kas yayasan (pemasukan)</label>
+              {f.catatKas && (
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <div><label className="mb-1 block text-sm font-medium">Kas bidang</label>
+                    <select className="inp" value={f.bidang} onChange={(e) => set({ bidang: e.target.value, unitId: '' })}><option value="">— pilih bidang —</option>{BIDANG.map((b) => <option key={b}>{b}</option>)}</select></div>
+                  <div><label className="mb-1 block text-sm font-medium">Lembaga / sub unit (opsional)</label>
+                    <select className="inp" value={f.unitId} onChange={(e) => set({ unitId: e.target.value })} disabled={!f.bidang}>
+                      <option value="">Tanpa rincian lembaga</option>
+                      {urutkanLembaga(inst).filter((x) => x.namaLembaga && kategoriEfektif(x, inst) === f.bidang).map((x) => <option key={x.id} value={x.namaLembaga}>{x._anak ? `↳ ${x.namaLembaga}` : x.namaLembaga}</option>)}
+                    </select></div>
+                  <label className="flex items-center gap-2 text-sm sm:col-span-2"><input type="checkbox" checked={f.tampilNama} onChange={(e) => set({ tampilNama: e.target.checked })} /> Tampilkan nama donatur di laporan kas publik <span className="text-slate-500">(bawaan: “Hamba Allah”, karena laporan kas dapat dilihat siapa saja)</span></label>
+                </div>
+              )}
+            </div>
           )}
           <div className="sm:col-span-2"><label className="mb-1 block text-sm font-medium">Pesan tambahan di ucapan (opsional)</label><input className="inp" value={f.pesan} onChange={(e) => set({ pesan: e.target.value })} /></div>
         </div>
@@ -161,9 +219,11 @@ export default function AdminDonatur() {
           <div key={d.id} className="flex items-center justify-between gap-3 p-4">
             <div className="min-w-0 flex-1 text-sm">
               <p className="font-semibold">{d.nama} · {rupiah(d.jumlah)} {d.dikirim && <span className="ml-1 rounded-full bg-emerald-100 px-2 py-0.5 text-xs font-normal text-emerald-800">Ucapan terkirim</span>}</p>
-              <p className="truncate text-slate-500">{tglPanjang(d.tanggal)} · {d.jenis}{d.tujuan ? ` · ${d.tujuan}` : ''}</p>
+              <p className="truncate text-slate-500">{tglPanjang(d.tanggal)} · {d.jenis}{d.tujuan ? ` · ${d.tujuan}` : ' · Umum'}</p>
+              {d.kasId && <p className="mt-0.5 flex items-center gap-1 text-xs text-emerald-700"><CheckCircle2 size={12} /> Tercatat di Kas {d.bidang || 'yayasan'}</p>}
             </div>
             <div className="flex shrink-0 gap-2">
+              {!d.kegiatanId && !d.kasId && <button className="btn-light" onClick={() => catatKeKas(d)}>Catat ke kas</button>}
               <button className="btn-light" onClick={() => { setAktif(d); window.scrollTo({ top: 0, behavior: 'smooth' }); }}>Ucapan</button>
               <button className="btn-light !text-red-600" onClick={() => hapus(d)} aria-label="Hapus"><Trash2 size={14} /></button>
             </div>

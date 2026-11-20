@@ -100,3 +100,11 @@ Nama cloud dan preset berada di `NEXT_PUBLIC_*`, jadi siapa pun bisa mengunggah 
 - Foto Cloudinary ditampilkan otomatis dalam ukuran/format ringan (`f_auto,q_auto,w_…`). Foto besar diperkecil dulu di HP sebelum diunggah.
 - Data beranda di-cache 10 menit di browser pengunjung. Transaksi, berita, kegiatan, dan galeri baru dibaca saat bagiannya mendekati layar.
 - Foto lama yang sudah tersimpan di Firestore tetap di sana sampai diunggah ulang. Foto latar juga bisa berupa URL atau file di folder `public/` (mis. `/latar.jpg`).
+
+## Sumbangan umum yayasan → kas otomatis + ucapan terima kasih
+- **Admin → Donatur**: bila sumbangan **tidak** dipilih untuk kegiatan (Umum), sumbangan otomatis dicatat sebagai pemasukan di koleksi `transactions` (ID `d_<idDonasi>`), lengkap dengan jejak di Riwayat Kas (`audit_log`) dan pembaruan inkremental `settings/ringkasanKas`. Tidak perlu lagi mengetik ulang di tab Kas, dan tidak perlu mengubah `firestore.rules`.
+- Admin memilih **Kas bidang** (Keagamaan/Sosial/Kemanusiaan; wajib) dan, bila perlu, lembaga/sub unit (daftar disaring menurut bidang; divalidasi oleh `validasiKas`). Pilihan bidang terakhir diingat di browser.
+- **Privasi**: transaksi kas tampil publik, jadi keterangan otomatis ditulis `Infaq umum · Hamba Allah`. Nama donatur hanya ditulis bila kotak "Tampilkan nama donatur di laporan kas publik" dicentang. Nomor WhatsApp tidak pernah masuk ke kas.
+- Menghapus donasi ikut mencabut pemasukannya dari kas (dan menurunkan ringkasan). Donasi umum lama tampil dengan tombol **Catat ke kas** (peringatan: jangan dipakai bila sudah pernah diketik manual di tab Kas).
+- **Ucapan terima kasih** (WhatsApp/PDF) untuk sumbangan umum kini berbunyi "untuk mendukung program dan kegiatan <nama yayasan>" (`tujuanUcapan` di `lib/kegiatan.js`). Panel ucapan otomatis terbuka setelah simpan.
+- Logika ada di `lib/donasiKas.js`. Bila ringkasan belum pernah dibangun, beranda tetap membaca semua transaksi (perilaku lama), jadi tidak ada ringkasan parsial.
