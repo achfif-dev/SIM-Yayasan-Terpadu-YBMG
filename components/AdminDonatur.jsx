@@ -1,8 +1,8 @@
 'use client';
 
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { collection, deleteDoc, doc, getDocs, limit, orderBy, query, serverTimestamp, setDoc, updateDoc } from 'firebase/firestore';
-import { CheckCircle2, Copy, Loader2, MessageCircle, Plus, Trash2 } from 'lucide-react';
+import { CheckCircle2, Copy, Loader2, MessageCircle, Paperclip, Plus, Trash2, Upload } from 'lucide-react';
 import { getAuthInstance, getDb } from '../lib/firebase';
 import { bukaWA, salinTeks } from '../lib/bagikan';
 import { JENIS_DONASI, rupiah, teksTerimaKasih, tglHariIni, tglPanjang } from '../lib/kegiatan';
@@ -12,9 +12,11 @@ import { kategoriEfektif, urutkanLembaga, validasiKas } from '../lib/lembaga';
 import { catatDonasiUmum, cabutDonasiUmum } from '../lib/donasiKas';
 import { pdfTerimaKasih } from '../lib/pdfdoc';
 import PdfAksi from './PdfAksi';
+import { BuktiField, BuktiModal } from './Bukti';
+import { deleteBukti, uploadBukti } from '../lib/upload';
 
 // catatKas/bidang/unitId/tampilNama hanya berlaku untuk sumbangan UMUM (tanpa kegiatan); bidang sengaja kosong = admin wajib memilih.
-const KOSONG = () => ({ nama: '', hp: '', jenis: 'Infaq', jumlah: '', tanggal: tglHariIni(), kegiatanId: '', samar: false, pesan: '', catatKas: true, bidang: '', unitId: '', tampilNama: false });
+const KOSONG = () => ({ nama: '', hp: '', jenis: 'Infaq', jumlah: '', tanggal: tglHariIni(), kegiatanId: '', samar: false, pesan: '', catatKas: true, bidang: '', unitId: '', tampilNama: false, bukti: '' });
 const JENIS_KAS = { Infaq: 'Infaq', Shodaqoh: 'Shodaqoh', 'Infaq & Shodaqoh': 'Infaq' };
 
 function Ucapan({ d, profil, ttd, onKirim }) {
@@ -53,6 +55,14 @@ export default function AdminDonatur() {
   const [kegiatan, setKegiatan] = useState([]);
   const [pengurus, setPengurus] = useState([]);
   const [inst, setInst] = useState([]);
+  const [lihat, setLihat] = useState(null); // bukti yang sedang dibuka
+  const pend = useRef(new Set()); // bukti terunggah yang belum disimpan → dibersihkan bila batal / pindah tab
+  useEffect(() => () => { pend.current.forEach((v) => deleteBukti(v)); }, []);
+  const ubahBukti = (v) => {
+    if (f.bukti && pend.current.has(f.bukti)) { pend.current.delete(f.bukti); deleteBukti(f.bukti); }
+    if (v) pend.current.add(v);
+    set({ bukti: v });
+  };
   const [profil, setProfil] = useState({ namaYayasan: 'Yayasan' });
   const [ttd, setTtd] = useState('');
   const [aktif, setAktif] = useState(null);
@@ -102,10 +112,11 @@ export default function AdminDonatur() {
     const ref = doc(collection(getDb(), 'donations'));
     const data = {
       nama: f.nama.trim(), hp: f.hp.trim(), jenis: f.jenis, jumlah, tanggal: f.tanggal, tujuan: kg ? kg.nama : '',
-      kegiatanId: kg ? kg.id : '', pesan: f.pesan.trim(), dikirim: false, createdAt: serverTimestamp(), createdBy: me,
+      kegiatanId: kg ? kg.id : '', pesan: f.pesan.trim(), bukti: f.bukti || '', dikirim: false, createdAt: serverTimestamp(), createdBy: me,
     };
     try {
       await setDoc(ref, data);
+      if (f.bukti) pend.current.delete(f.bukti);
       let catatan = 'Tersimpan ✓';
       if (kg) {
         try {
@@ -149,12 +160,31 @@ export default function AdminDonatur() {
       await muat();
     } catch (er) { setMsg(`Gagal mencatat ke kas: ${er.message}`); }
   };
+  // Tambah / ganti bukti pada donasi yang sudah tercatat.
+  const unggahBukti = async (d, file) => {
+    if (!file) return;
+    setMsg('Mengunggah bukti…');
+    let baru = '';
+    let tersimpan = false;
+    try {
+      baru = await uploadBukti(file);
+      await updateDoc(doc(getDb(), 'donations', d.id), { bukti: baru });
+      tersimpan = true;
+      if (d.bukti) await deleteBukti(d.bukti);
+      setMsg('Bukti tersimpan ✓');
+      await muat();
+    } catch (er) {
+      if (baru && !tersimpan) await deleteBukti(baru);
+      setMsg(`Gagal menyimpan bukti: ${er.message}`);
+    }
+  };
   const hapus = async (d) => {
     if (!confirm(`Hapus catatan donasi ${d.nama}?${d.kegiatanId ? ' Pemasukan di kas kegiatan terkait ikut dihapus.' : ''}${d.kasId ? ` Pemasukan di Kas ${d.bidang || 'yayasan'} terkait ikut dihapus.` : ''}`)) return;
     try {
       if (d.kegiatanId) await deleteDoc(doc(getDb(), 'panitia', d.kegiatanId, 'kas', `d_${d.id}`)).catch(() => {});
       if (d.kasId) await cabutDonasiUmum({ donasiId: d.id, oleh: getAuthInstance().currentUser?.email || '' });
       await deleteDoc(doc(getDb(), 'donations', d.id));
+      if (d.bukti) await deleteBukti(d.bukti);
       if (aktif?.id === d.id) setAktif(null);
       await muat();
     } catch (e) { setMsg(`Gagal: ${e.message}`); }
@@ -196,6 +226,9 @@ export default function AdminDonatur() {
             </div>
           )}
           <div className="sm:col-span-2"><label className="mb-1 block text-sm font-medium">Pesan tambahan di ucapan (opsional)</label><input className="inp" value={f.pesan} onChange={(e) => set({ pesan: e.target.value })} /></div>
+          <div className="sm:col-span-2"><label className="mb-1 block text-sm font-medium">Foto bukti transfer / lainnya (opsional)</label>
+            <BuktiField value={f.bukti} onChange={ubahBukti} label="Upload bukti transfer" />
+            <p className="mt-1 text-xs text-slate-500">Hanya tersimpan di catatan donasi ini (khusus admin); tidak ikut tampil di laporan kas publik.</p></div>
         </div>
         <div className="flex flex-wrap items-center gap-3">
           <button className="btn" disabled={busy}>{busy ? <Loader2 size={14} className="animate-spin" /> : <Plus size={14} />} Simpan & buat ucapan</button>
@@ -209,6 +242,7 @@ export default function AdminDonatur() {
         <datalist id="daftar-pengurus">{pengurus.map((x) => <option key={x} value={x} />)}</datalist>
       </div>
 
+      {lihat && <BuktiModal value={lihat} onClose={() => setLihat(null)} />}
       {aktif && <Ucapan d={aktif} profil={profil} ttd={ttd} onKirim={tandaiTerkirim} />}
 
       <div className="divide-y rounded-2xl bg-white shadow-sm">
@@ -222,7 +256,12 @@ export default function AdminDonatur() {
               <p className="truncate text-slate-500">{tglPanjang(d.tanggal)} · {d.jenis}{d.tujuan ? ` · ${d.tujuan}` : ' · Umum'}</p>
               {d.kasId && <p className="mt-0.5 flex items-center gap-1 text-xs text-emerald-700"><CheckCircle2 size={12} /> Tercatat di Kas {d.bidang || 'yayasan'}</p>}
             </div>
-            <div className="flex shrink-0 gap-2">
+            <div className="flex shrink-0 flex-wrap justify-end gap-2">
+              {d.bukti && <button className="btn-light" onClick={() => setLihat(d.bukti)} aria-label="Lihat bukti"><Paperclip size={14} /></button>}
+              <label className="btn-light cursor-pointer" title={d.bukti ? 'Ganti bukti' : 'Tambah bukti'}>
+                <Upload size={14} />
+                <input type="file" accept="image/*" className="hidden" onChange={(e) => { const fl = e.target.files?.[0]; e.target.value = ''; unggahBukti(d, fl); }} />
+              </label>
               {!d.kegiatanId && !d.kasId && <button className="btn-light" onClick={() => catatKeKas(d)}>Catat ke kas</button>}
               <button className="btn-light" onClick={() => { setAktif(d); window.scrollTo({ top: 0, behavior: 'smooth' }); }}>Ucapan</button>
               <button className="btn-light !text-red-600" onClick={() => hapus(d)} aria-label="Hapus"><Trash2 size={14} /></button>

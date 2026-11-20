@@ -43,7 +43,7 @@ export function BuktiModal({ value, onClose }) {
   );
 }
 
-export function BuktiField({ value, onChange }) {
+export function BuktiField({ value, onChange, label = 'Upload foto nota' }) {
   const [busy, setBusy] = useState(false);
   const { src } = useBuktiSrc(value);
 
@@ -62,7 +62,7 @@ export function BuktiField({ value, onChange }) {
         ? <img src={src} alt="" className="h-16 w-16 rounded-lg border object-cover" />
         : <div className="flex h-16 w-16 items-center justify-center rounded-lg bg-slate-100"><Upload size={18} /></div>}
       <label className="btn-light cursor-pointer">
-        {busy ? <Loader2 size={14} className="animate-spin" /> : <Upload size={14} />} {value ? 'Ganti' : 'Upload foto nota'}
+        {busy ? <Loader2 size={14} className="animate-spin" /> : <Upload size={14} />} {value ? 'Ganti' : label}
         <input type="file" accept="image/*" className="hidden" onChange={handle} />
       </label>
       {value && <button type="button" className="btn-light !text-red-600" onClick={() => onChange('')} aria-label="Hapus bukti"><Trash2 size={14} /></button>}
