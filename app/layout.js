@@ -25,7 +25,7 @@ async function fetchProfile() {
     if (!res.ok) return null;
     const f = (await res.json()).fields || {};
     const str = (k) => (f[k] && typeof f[k].stringValue === 'string' ? f[k].stringValue.trim() : '');
-    return { namaYayasan: str('namaYayasan'), tagline: str('tagline'), logoUrl: str('logoUrl') };
+    return { namaYayasan: str('namaYayasan'), statusHukum: str('statusHukum'), tagline: str('tagline'), logoUrl: str('logoUrl') };
   } catch (e) {
     return null;
   }
@@ -73,7 +73,7 @@ export default async function RootLayout({ children }) {
         <script dangerouslySetInnerHTML={{ __html: THEME_BOOT_SCRIPT }} />
       </head>
       <body>
-        <Splash logo={logoAman(p?.logoUrl)} nama={p?.namaYayasan || ''} />
+        <Splash logo={logoAman(p?.logoUrl)} nama={p?.namaYayasan || ''} status={p?.statusHukum || ''} />
         {children}
       </body>
     </html>

@@ -25,6 +25,7 @@ const DEFAULT_PROFILE = {
   tagline: 'Melayani umat melalui ibadah, pendidikan, dan kepedulian sosial',
   deskripsi: 'Yayasan yang bergerak di bidang keagamaan, sosial, dan kemanusiaan untuk kemaslahatan umat. Data yayasan dapat diubah melalui panel admin.',
   logoUrl: '',
+  statusHukum: '',
   alamat: 'Alamat yayasan belum diisi',
   telepon: '-',
   email: '-',
@@ -32,7 +33,7 @@ const DEFAULT_PROFILE = {
 };
 
 // Sebelum data Firestore selesai dimuat, jangan tampilkan nama bawaan (mencegah "kedip" nama yang salah saat refresh)
-const EMPTY_PROFILE = { namaYayasan: '', tagline: '', deskripsi: '', logoUrl: '', alamat: '', telepon: '', email: '', rekeningDonasi: '' };
+const EMPTY_PROFILE = { namaYayasan: '', statusHukum: '', tagline: '', deskripsi: '', logoUrl: '', alamat: '', telepon: '', email: '', rekeningDonasi: '' };
 
 const UNITS = BIDANG; // keagamaan, sosial, kemanusiaan (sesuai AD/ART; lihat lib/bidang.js)
 const DIVISI = ['Pembina', 'Pengawas', 'Pengurus Harian', 'Unit'];
@@ -201,7 +202,10 @@ export default function HomePage() {
         <div className="mx-auto flex max-w-content items-center justify-between px-4 py-3">
           <a href="#" className="flex items-center gap-3">
             <Logo url={profile.logoUrl} />
-            <span className={`font-bold text-brand-800 transition-opacity ${profileReady ? 'opacity-100' : 'opacity-0'}`}>{profile.namaYayasan || '\u00a0'}</span>
+            <span className={`flex flex-col leading-tight transition-opacity ${profileReady ? 'opacity-100' : 'opacity-0'}`}>
+              <span className="font-bold text-brand-800">{profile.namaYayasan || '\u00a0'}</span>
+              {profile.statusHukum && <span className="max-w-[16rem] truncate text-[0.7rem] font-normal text-slate-500 sm:max-w-md">{profile.statusHukum}</span>}
+            </span>
           </a>
           <nav className="hidden items-center gap-6 text-sm font-medium md:flex">
             {nav.map(([l, h]) => <a key={h} href={h} className="hover:text-brand-700">{l}</a>)}
@@ -228,6 +232,7 @@ export default function HomePage() {
         <div className="mx-auto max-w-content"><div className={left ? 'max-w-3xl' : 'mx-auto max-w-3xl'}>
           {isYa(tpl.heroTampilLogo) && <div className={`mb-5 flex ${left ? 'justify-start' : 'justify-center'}`}><Logo url={profile.logoUrl} size={96} /></div>}
           <h1 className={`min-h-[1.2em] text-3xl font-extrabold transition-opacity sm:text-5xl ${profileReady ? 'opacity-100' : 'opacity-0'}`}>{profile.namaYayasan}</h1>
+          {profile.statusHukum && <p className="mt-2 whitespace-pre-line text-sm text-brand-100/90">{profile.statusHukum}</p>}
           <p className="mt-4 text-lg text-brand-100">{profile.tagline}</p>
           <div className={`mt-8 flex flex-wrap gap-3 ${left ? 'justify-start' : 'justify-center'}`}>
             {tpl.heroTombol1Teks && <a href="#lembaga" className="rounded-lg bg-white px-5 py-2.5 font-semibold text-brand-800">{tpl.heroTombol1Teks}</a>}
@@ -299,7 +304,7 @@ export default function HomePage() {
       </section>
       )}
 
-      <Konten namaYayasan={profile.namaYayasan} institutions={institutions} showBerita={isYa(tpl.tampilBerita)} showGaleri={isYa(tpl.tampilGaleri)} />
+      <Konten namaYayasan={profile.namaYayasan} statusHukum={profile.statusHukum} institutions={institutions} showBerita={isYa(tpl.tampilBerita)} showGaleri={isYa(tpl.tampilGaleri)} />
 
       {isYa(tpl.tampilPengurus) && (
       <section id="pengurus" className="mx-auto max-w-content px-4 py-16">
@@ -356,7 +361,7 @@ export default function HomePage() {
           ) : !kasReady ? (
             <p className="mt-10 text-center text-sm text-slate-500">Memuat ringkasan kas…</p>
           ) : trx ? (
-            <LaporanKas trx={trx} namaYayasan={profile.namaYayasan} />
+            <LaporanKas trx={trx} namaYayasan={profile.namaYayasan} statusHukum={profile.statusHukum} />
           ) : (
             <div className="mt-10 text-center">
               <button className="btn" onClick={loadTrx} disabled={trxLoading}>
@@ -377,6 +382,7 @@ export default function HomePage() {
             <Logo url={profile.logoUrl} size={48} />
             <div>
               <p className="font-bold text-white">{profile.namaYayasan}</p>
+              {profile.statusHukum && <p className="whitespace-pre-line text-xs text-brand-100/80">{profile.statusHukum}</p>}
               <p className="text-sm">{profile.tagline}</p>
             </div>
           </div>

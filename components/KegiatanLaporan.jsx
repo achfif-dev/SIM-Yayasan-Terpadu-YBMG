@@ -28,7 +28,7 @@ export default function KegiatanLaporan({ k, h, profil, onSaved }) {
 
   const kk = { ...k, ...p };
   const link = p.publik && typeof window !== 'undefined' ? linkLaporan(k.id) : '';
-  const teks = teksLPJ({ k: kk, h, yayasan: profil.namaYayasan, link });
+  const teks = teksLPJ({ k: kk, h, yayasan: profil.namaYayasan, statusHukum: profil.statusHukum, link });
   const tersimpan = !!k.publik === p.publik;
   const versi = `${h.masuk}|${h.keluar}|${h.rabTotal}|${h.masukRows.length}|${h.keluarRows.length}|${p.penutup}|${p.sisaDisposisi}|${p.mengetahuiNama}|${p.mengetahuiJabatan}|${JSON.stringify(k.struktur || []).length}|${link}`;
 

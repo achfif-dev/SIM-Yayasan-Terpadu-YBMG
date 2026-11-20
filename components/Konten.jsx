@@ -41,7 +41,7 @@ function Modal({ onClose, children }) {
 
 const Tag = ({ children }) => <span className="rounded-full bg-brand-100 px-2.5 py-0.5 text-xs font-semibold text-brand-800">{children}</span>;
 
-export default function Konten({ institutions = [], showBerita = true, showGaleri = true, namaYayasan = 'Yayasan' }) {
+export default function Konten({ institutions = [], showBerita = true, showGaleri = true, namaYayasan = 'Yayasan', statusHukum = '' }) {
   const [ann, setAnn] = useState([]);
   const [evt, setEvt] = useState([]);
   const [gal, setGal] = useState([]);
@@ -142,7 +142,7 @@ export default function Konten({ institutions = [], showBerita = true, showGaler
     .sort((a, b) => a.next.localeCompare(b.next) || String(a.jamMulai || '').localeCompare(String(b.jamMulai || '')));
 
   const pekan = jadwalPekan(upcoming, rutin, { dari: today, hari: 7 });
-  const opsiKal = { namaYayasan, dari: today };
+  const opsiKal = { namaYayasan, statusHukum, dari: today };
 
   // Data untuk kalender bulanan: aturan rutin aktif (termasuk yang jadwal terdekatnya sudah lewat) + kegiatan sekali jalan
   const rutinKal = rtn.filter((r) => r.aktif !== 'Tidak').filter(match);

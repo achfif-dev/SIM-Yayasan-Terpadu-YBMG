@@ -115,3 +115,9 @@ Nama cloud dan preset berada di `NEXT_PUBLIC_*`, jadi siapa pun bisa mengunggah 
 - Beranda membuka layar pembuka setelah profil, tema (Admin → Tampilan), dan foto hero selesai dimuat, sehingga hero/tombol/bagian bawaan tidak sempat terlihat lalu berganti. Halaman lain (admin, login, laporan) menutupnya segera.
 - Pengaturan di bagian atas `components/Splash.jsx`: `MIN_MS` (tampil minimal, 700 ms), `MAX_MS` (batas aman 8 detik; bila data gagal dimuat halaman tetap terbuka), `FADE_MS`. Gaya di `app/globals.css` (`.splash*`), mengikuti warna tema; animasi dimatikan bagi pengguna yang memilih "kurangi gerakan".
 - Perubahan logo di Admin → Identitas tampil di layar pembuka paling lama 5 menit kemudian (cache server).
+
+## Status Hukum yayasan
+- **Admin → Identitas → Status Hukum** (disimpan di `settings/profile.statusHukum`; isi mis. "Akta Notaris No. … / SK Kemenkumham AHU-…"). Kolom boleh kosong; bila kosong, baris statusnya tidak tampil di mana pun.
+- Tampil tepat di **bawah nama yayasan** di: header, hero, dan footer beranda; layar pembuka; header laporan kegiatan publik (`/laporan`).
+- Ikut tercetak di: **kop semua PDF** (susunan panitia, laporan pertanggungjawaban), **PDF ucapan terima kasih**, **Excel & cetak PDF laporan kas**, serta semua **teks WhatsApp** (ucapan terima kasih, susunan panitia, laporan keuangan kegiatan, jadwal kegiatan & jadwal 7 hari).
+- Perubahan terlihat di beranda sampai ±10 menit (cache browser pengunjung) dan di layar pembuka sampai ±5 menit (cache server); PDF/teks yang dibuat dari panel admin langsung memakai nilai terbaru.

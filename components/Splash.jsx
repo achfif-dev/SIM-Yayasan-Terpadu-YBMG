@@ -12,7 +12,7 @@ const MIN_MS = 700; // tampil minimal (hindari kedip bila data sudah di cache)
 const MAX_MS = 8000; // batas aman: tidak pernah menahan halaman lebih lama dari ini
 const FADE_MS = 450; // harus sama dengan transisi .splash di globals.css
 
-export default function Splash({ logo = '', nama = '' }) {
+export default function Splash({ logo = '', nama = '', status = '' }) {
   const [ada, setAda] = useState(true); // masih dipasang di DOM
   const [pudar, setPudar] = useState(false); // sedang memudar
 
@@ -41,6 +41,7 @@ export default function Splash({ logo = '', nama = '' }) {
         ? <img src={logo} alt="" className="splash-logo" />
         : <Building2 size={64} className="splash-logo" style={{ color: 'rgb(var(--brand-700))' }} />}
       {nama && <p className="splash-nama">{nama}</p>}
+      {status && <p className="splash-status">{status}</p>}
       <div className="splash-bar" />
     </div>
   );

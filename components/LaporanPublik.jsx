@@ -51,7 +51,7 @@ export default function LaporanPublik() {
   }
 
   const link = window.location.href;
-  const teks = teksLPJ({ k, h, yayasan: profil.namaYayasan, link });
+  const teks = teksLPJ({ k, h, yayasan: profil.namaYayasan, statusHukum: profil.statusHukum, link });
   const struktur = kelompokSeksi(k.struktur, true);
   const kel = h.perKategori.filter((x) => x.rows.length);
   const Nota = ({ x }) => (x.bukti ? <button type="button" onClick={() => setLihat(x.bukti)} className="ml-1 inline-flex items-center text-brand-700" aria-label="Lihat nota"><Paperclip size={12} /></button> : null);
@@ -61,7 +61,7 @@ export default function LaporanPublik() {
       <header className="border-b bg-white">
         <div className="mx-auto flex max-w-3xl items-center gap-3 px-4 py-3">
           {profil.logoUrl && <img src={profil.logoUrl} alt="" className="h-10 w-10 object-contain" />}
-          <div className="min-w-0"><p className="truncate font-bold text-brand-800">{profil.namaYayasan}</p>{profil.alamat && <p className="truncate text-xs text-slate-500">{profil.alamat}</p>}</div>
+          <div className="min-w-0"><p className="truncate font-bold text-brand-800">{profil.namaYayasan}</p>{profil.statusHukum && <p className="truncate text-xs text-slate-500">{profil.statusHukum}</p>}{profil.alamat && <p className="truncate text-xs text-slate-500">{profil.alamat}</p>}</div>
         </div>
       </header>
       <main className="mx-auto max-w-3xl space-y-6 px-4 py-6">

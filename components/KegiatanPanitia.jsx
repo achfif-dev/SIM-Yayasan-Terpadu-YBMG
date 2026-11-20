@@ -37,7 +37,7 @@ export default function KegiatanPanitia({ k, profil, onSaved }) {
   };
 
   const kk = { ...k, struktur: rows };
-  const teks = teksStruktur({ k: kk, yayasan: profil.namaYayasan });
+  const teks = teksStruktur({ k: kk, yayasan: profil.namaYayasan, statusHukum: profil.statusHukum });
   const versi = JSON.stringify(rows.map((r) => [r.seksi, r.jabatan, r.nama]));
 
   return (

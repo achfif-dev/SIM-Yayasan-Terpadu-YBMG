@@ -32,6 +32,7 @@ const rupiah = (n) => new Intl.NumberFormat('id-ID', { style: 'currency', curren
 
 const PROFILE_FIELDS = [
   { name: 'namaYayasan', label: 'Nama Yayasan' },
+  { name: 'statusHukum', label: 'Status Hukum (tampil di bawah nama yayasan, ucapan terima kasih, dan laporan; mis. Akta Notaris No. … / SK Kemenkumham AHU-…)', type: 'textarea', rows: 2 },
   { name: 'tagline', label: 'Tagline' },
   { name: 'deskripsi', label: 'Deskripsi', type: 'textarea' },
   { name: 'logoUrl', label: 'Logo Yayasan', type: 'image', folder: 'logos' },
@@ -708,6 +709,7 @@ function KasTab() {
   const [listed, setListed] = useState(false);
   const [syncMsg, setSyncMsg] = useState('');
   const [nama, setNama] = useState('Yayasan');
+  const [statusHukum, setStatusHukum] = useState('');
   const [inst, setInst] = useState([]); // lembaga & sub unit: untuk validasi penanda dan rincian laporan
   // Perbarui dokumen ringkasan yang dibaca beranda (1 baca, bukan seluruh transaksi)
   const sync = async (list) => {
@@ -716,7 +718,7 @@ function KasTab() {
     catch (err) { setSyncMsg('Gagal memperbarui ringkasan beranda: ' + err.message); }
   };
   useEffect(() => {
-    getDoc(doc(getDb(), 'settings', 'profile')).then((s) => { if (s.exists() && s.data().namaYayasan) setNama(s.data().namaYayasan); }).catch(() => {});
+    getDoc(doc(getDb(), 'settings', 'profile')).then((s) => { if (s.exists()) { if (s.data().namaYayasan) setNama(s.data().namaYayasan); setStatusHukum(s.data().statusHukum || ''); } }).catch(() => {});
     getDocs(collection(getDb(), 'institutions')).then((s) => setInst(s.docs.map((d) => ({ id: d.id, ...d.data() })))).catch(() => {});
   }, []);
   return (
@@ -729,7 +731,7 @@ function KasTab() {
         validate={(f) => validasiKas(f, inst)}
         renderItem={(t) => (<><p className={`font-semibold ${t.tipe === 'masuk' ? 'text-emerald-700' : 'text-red-600'}`}>{t.tipe === 'masuk' ? '+' : '-'} {rupiah(t.jumlah)} · Kas {normBidang(t.kategoriUnit)}{t.unitId ? ` · ${t.unitId}` : ''} {t.bukti && <Paperclip size={12} className="ml-1 inline text-slate-400" />}</p><p className="truncate text-slate-500">{t.tanggal} · {t.keterangan}</p></>)} />
       <AuditList />
-      <div className="rounded-2xl bg-white p-6 shadow-sm"><LaporanKas trx={trx} namaYayasan={nama} lembaga={inst} /></div>
+      <div className="rounded-2xl bg-white p-6 shadow-sm"><LaporanKas trx={trx} namaYayasan={nama} statusHukum={statusHukum} lembaga={inst} /></div>
     </div>
   );
 }

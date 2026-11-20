@@ -24,9 +24,9 @@ function Ucapan({ d, profil, ttd, onKirim }) {
   const [teks, setTeks] = useState('');
   const [msg, setMsg] = useState('');
   useEffect(() => {
-    setTeks(teksTerimaKasih({ nama: d.nama, jenis: d.jenis, jumlah: d.jumlah, tanggal: d.tanggal, tujuan: d.tujuan, pesan: d.pesan, yayasan: profil.namaYayasan, telepon: profil.telepon, ttd, gaya }));
+    setTeks(teksTerimaKasih({ nama: d.nama, jenis: d.jenis, jumlah: d.jumlah, tanggal: d.tanggal, tujuan: d.tujuan, pesan: d.pesan, yayasan: profil.namaYayasan, statusHukum: profil.statusHukum, telepon: profil.telepon, ttd, gaya }));
     setMsg('');
-  }, [d.id, gaya, ttd, profil.namaYayasan, profil.telepon]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [d.id, gaya, ttd, profil.namaYayasan, profil.statusHukum, profil.telepon]); // eslint-disable-line react-hooks/exhaustive-deps
   return (
     <div className="space-y-3 rounded-2xl border-2 border-brand-600 bg-white p-5 shadow-sm">
       <div className="flex flex-wrap items-center justify-between gap-2">

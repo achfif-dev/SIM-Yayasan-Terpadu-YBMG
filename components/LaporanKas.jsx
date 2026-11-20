@@ -51,7 +51,7 @@ const Legend = () => (
 );
 
 // `lembaga` (opsional) = daftar lembaga/sub unit; bila diberikan, tampil tabel rincian per lembaga & sub unit (termasuk Usaha)
-export default function LaporanKas({ trx, namaYayasan = 'Yayasan', lembaga = [] }) {
+export default function LaporanKas({ trx, namaYayasan = 'Yayasan', statusHukum = '', lembaga = [] }) {
   const years = useMemo(() => availableYears(trx), [trx]);
   const [unit, setUnit] = useState('Semua');
   const [tahunSel, setTahunSel] = useState(null); // null = tahun terbaru yang ada datanya
@@ -61,7 +61,7 @@ export default function LaporanKas({ trx, namaYayasan = 'Yayasan', lembaga = [] 
 
   const tahun = tahunSel ?? years[0] ?? 'Semua';
   const report = useMemo(() => buildReport(trx, { unit, tahun, bulan, lembaga }), [trx, unit, tahun, bulan, lembaga]);
-  const meta = { namaYayasan, unit, tahun, bulan };
+  const meta = { namaYayasan, statusHukum, unit, tahun, bulan };
   const rows = report.rows;
 
   return (
