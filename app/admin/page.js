@@ -341,6 +341,139 @@ function TampilanTab() {
 }
 
 // susun(list) = urutan khusus seluruh daftar; siapkan(data, daftar) = ubah data sebelum disimpan; cegahHapus(item, daftar) = pesan bila tak boleh dihapus
+// Unggah banyak foto galeri sekaligus. Tiap foto punya tanggal & keterangan sendiri,
+// jadi satu kali unggah bisa berisi foto dari satu tanggal maupun beberapa tanggal berbeda.
+const MAKS_FOTO = 40;
+const TGL_OK = /^\d{4}-\d{2}-\d{2}$/;
+function GaleriMassal({ onDone }) {
+  const [items, setItems] = useState([]); // { key, file, url, tanggal, keterangan, status: ''|'proses'|'ok'|'gagal', err }
+  const [tglUmum, setTglUmum] = useState(toStr(new Date()));
+  const [lembaga, setLembaga] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [msg, setMsg] = useState('');
+  const itemsRef = useRef([]);
+  itemsRef.current = items;
+  useEffect(() => () => itemsRef.current.forEach((i) => URL.revokeObjectURL(i.url)), []);
+
+  const ubah = (key, patch) => setItems((p) => p.map((i) => (i.key === key ? { ...i, ...patch } : i)));
+
+  const tambah = (e) => {
+    const files = [...(e.target.files || [])].filter((f) => f.type.startsWith('image/'));
+    e.target.value = ''; // supaya foto yang sama bisa dipilih lagi
+    if (!files.length) return;
+    const sisa = Math.max(0, MAKS_FOTO - itemsRef.current.length);
+    const baru = files.slice(0, sisa).map((file) => ({
+      key: `${Date.now()}-${Math.random().toString(36).slice(2)}`,
+      file, url: URL.createObjectURL(file), tanggal: tglUmum, keterangan: '', status: '', err: '',
+    }));
+    setItems((p) => [...p, ...baru]);
+    setMsg(files.length > sisa ? `Maksimal ${MAKS_FOTO} foto per unggahan; ${files.length - sisa} foto tidak dimasukkan.` : '');
+  };
+
+  const hapus = (key) => {
+    const it = itemsRef.current.find((i) => i.key === key);
+    if (it) URL.revokeObjectURL(it.url);
+    setItems((p) => p.filter((i) => i.key !== key));
+  };
+
+  const samakanTanggal = () => setItems((p) => p.map((i) => (i.status === 'ok' ? i : { ...i, tanggal: tglUmum })));
+
+  const unggah = async () => {
+    const antre = itemsRef.current.filter((i) => i.status !== 'ok');
+    if (!antre.length) return;
+    if (antre.some((i) => !TGL_OK.test(i.tanggal))) { setMsg('Tanggal setiap foto wajib diisi.'); return; }
+    setBusy(true);
+    setMsg('');
+    const me = getAuthInstance().currentUser?.email || '';
+    let ok = 0;
+    let gagal = 0;
+    let next = 0;
+    const worker = async () => {
+      while (next < antre.length) {
+        const it = antre[next]; next += 1;
+        ubah(it.key, { status: 'proses', err: '' });
+        try {
+          const gambarUrl = await uploadImage(it.file, 'galeri', { maxSize: 800, quality: 0.65 });
+          await addDoc(collection(getDb(), 'gallery'), {
+            gambarUrl, keterangan: it.keterangan.trim(), tanggal: it.tanggal, lembaga,
+            createdAt: serverTimestamp(), createdBy: me, updatedAt: serverTimestamp(), updatedBy: me,
+          });
+          ok += 1;
+          ubah(it.key, { status: 'ok' });
+        } catch (err) {
+          gagal += 1;
+          ubah(it.key, { status: 'gagal', err: err.message });
+        }
+      }
+    };
+    await Promise.all([worker(), worker()]); // 2 foto diproses bersamaan (hemat memori HP)
+    if (ok) clearCache();
+    itemsRef.current.filter((i) => i.status === 'ok').forEach((i) => URL.revokeObjectURL(i.url));
+    setItems((p) => p.filter((i) => i.status !== 'ok'));
+    setMsg(gagal ? `${ok} foto tersimpan, ${gagal} gagal — periksa pesan di foto yang gagal lalu tekan Unggah lagi.` : `${ok} foto tersimpan ✓`);
+    setBusy(false);
+    if (ok) onDone?.();
+  };
+
+  const jumlah = items.filter((i) => i.status !== 'ok').length;
+  return (
+    <div className="space-y-4 rounded-2xl bg-white p-6 shadow-sm">
+      <h3 className="font-bold">Unggah Banyak Foto Sekaligus</h3>
+      <p className="text-sm text-slate-500">Pilih beberapa foto (bisa berkali-kali, maks {MAKS_FOTO}). Tanggal tiap foto bisa disamakan atau diatur sendiri-sendiri.</p>
+      <div className="grid gap-4 sm:grid-cols-2">
+        <div>
+          <label className="mb-1 block text-sm font-medium">Tanggal untuk foto yang dipilih</label>
+          <div className="flex gap-2">
+            <input type="date" className="inp" value={tglUmum} onChange={(e) => setTglUmum(e.target.value)} />
+            <button type="button" className="btn-light whitespace-nowrap" disabled={busy || !items.length || !TGL_OK.test(tglUmum)} onClick={samakanTanggal}>Terapkan ke semua</button>
+          </div>
+        </div>
+        <div>
+          <label className="mb-1 block text-sm font-medium">{LEMBAGA_LABEL} (berlaku untuk semua foto)</label>
+          <LembagaSelect value={lembaga} onChange={setLembaga} />
+        </div>
+      </div>
+      <div className="flex flex-wrap items-center gap-3">
+        <label className={`btn-light cursor-pointer ${busy || items.length >= MAKS_FOTO ? 'pointer-events-none opacity-50' : ''}`}>
+          <Upload size={14} /> Pilih foto
+          <input type="file" accept="image/*" multiple className="hidden" onChange={tambah} disabled={busy} />
+        </label>
+        <button type="button" className="btn" disabled={busy || !jumlah} onClick={unggah}>
+          {busy ? <Loader2 size={14} className="animate-spin" /> : <Plus size={14} />} Unggah {jumlah ? `${jumlah} foto` : ''}
+        </button>
+        <span className="text-sm text-slate-500">{msg}</span>
+      </div>
+      {items.length > 0 && (
+        <ul className="space-y-3">
+          {items.map((i) => (
+            <li key={i.key} className="flex items-start gap-3 rounded-xl border p-3">
+              <img src={i.url} alt="" className="h-16 w-16 flex-none rounded-lg object-cover" />
+              <div className="grid min-w-0 flex-1 gap-2 sm:grid-cols-2">
+                <input type="date" className="inp" value={i.tanggal} disabled={busy} onChange={(e) => ubah(i.key, { tanggal: e.target.value })} />
+                <input className="inp" placeholder="Keterangan (opsional)" value={i.keterangan} disabled={busy} onChange={(e) => ubah(i.key, { keterangan: e.target.value })} />
+                {i.status === 'proses' && <p className="text-xs text-slate-500 sm:col-span-2">Mengunggah…</p>}
+                {i.status === 'gagal' && <p className="text-xs text-red-600 sm:col-span-2">Gagal: {i.err}</p>}
+              </div>
+              <button type="button" className="btn-light !px-2 !text-red-600" disabled={busy} onClick={() => hapus(i.key)} aria-label="Buang foto"><Trash2 size={14} /></button>
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
+  );
+}
+
+function GaleriTab() {
+  const [k, setK] = useState(0); // naikkan = muat ulang daftar galeri setelah unggahan massal
+  return (
+    <div className="space-y-6">
+      <GaleriMassal onDone={() => setK((x) => x + 1)} />
+      <CrudTab key={k} col="gallery" fields={GAL_FIELDS} sort={byTanggal}
+        renderItem={(g) => (<div className="flex items-center gap-3">{g.gambarUrl && <img src={g.gambarUrl} alt="" className="h-12 w-12 rounded-lg object-cover" />}<div className="min-w-0"><p className="truncate font-semibold">{g.keterangan || 'Tanpa keterangan'}</p><p className="truncate text-slate-500">{g.tanggal} · {g.lembaga || 'Umum'}</p></div></div>)} />
+    </div>
+  );
+}
+
 function CrudTab({ col, fields, sort, renderItem, numberFields = [], onItems, onSaved, audit = false, validate, susun, siapkan, cegahHapus }) {
   const [items, setItems] = useState([]);
   const [form, setForm] = useState(initOf(fields));
@@ -665,10 +798,7 @@ export default function AdminPage() {
         )}
         {tab === 'cadangan' && <AdminCadangan isOwner={isOwnerEmail(user?.email)} />}
         {tab === 'admin' && isOwnerEmail(user?.email) && <AdminAkses />}
-        {tab === 'galeri' && (
-          <CrudTab col="gallery" fields={GAL_FIELDS} sort={byTanggal}
-            renderItem={(g) => (<div className="flex items-center gap-3">{g.gambarUrl && <img src={g.gambarUrl} alt="" className="h-12 w-12 rounded-lg object-cover" />}<div className="min-w-0"><p className="truncate font-semibold">{g.keterangan || 'Tanpa keterangan'}</p><p className="truncate text-slate-500">{g.tanggal} · {g.lembaga || 'Umum'}</p></div></div>)} />
-        )}
+        {tab === 'galeri' && <GaleriTab />}
       </main>
     </div>
   );
