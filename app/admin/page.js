@@ -17,6 +17,7 @@ import AdminKepanitiaan from '../../components/AdminKepanitiaan';
 import AdminDonatur from '../../components/AdminDonatur';
 import { uploadImage, deleteBukti } from '../../lib/upload';
 import { BuktiField } from '../../components/Bukti';
+import BagikanFoto from '../../components/BagikanFoto';
 import LaporanKas from '../../components/LaporanKas';
 import { DEFAULT_TAMPILAN, TAMPILAN_GROUPS, applyTheme, mergeTampilan } from '../../lib/tampilan';
 import { clearCache } from '../../lib/hemat';
@@ -514,7 +515,7 @@ function GaleriTab() {
     <div className="space-y-6">
       <GaleriMassal onDone={() => setK((x) => x + 1)} />
       <CrudTab key={k} col="gallery" fields={GAL_FIELDS} sort={byTanggal}
-        renderItem={(g) => (<div className="flex items-center gap-3">{g.gambarUrl && <img src={g.gambarUrl} alt="" className="h-12 w-12 rounded-lg object-cover" />}<div className="min-w-0"><p className="truncate font-semibold">{g.keterangan || 'Tanpa keterangan'}</p><p className="truncate text-slate-500">{g.tanggal} · {g.lembaga || 'Umum'}</p></div></div>)} />
+        renderItem={(g) => (<div className="flex items-center gap-3">{g.gambarUrl && <img src={g.gambarUrl} alt="" className="h-12 w-12 rounded-lg object-cover" />}<div className="min-w-0"><p className="truncate font-semibold">{g.keterangan || 'Tanpa keterangan'}</p><p className="truncate text-slate-500">{g.tanggal} · {g.lembaga || 'Umum'}</p><div className="mt-1"><BagikanFoto foto={g} kecil /></div></div></div>)} />
     </div>
   );
 }
