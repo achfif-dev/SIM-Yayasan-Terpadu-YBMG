@@ -17,6 +17,10 @@ service cloud.firestore {
           && exists(/databases/$(database)/documents/admins/$(request.auth.token.email.lower())));
     }
 
+    // Statistik pengunjung: pengunjung hanya boleh MENAMBAH hitungan harian (maks +1 per tulisan, tanpa data pribadi)
+    function statNaik(k) { return (request.resource.data.get(k, 0) - resource.data.get(k, 0)) in [0, 1]; }
+    function statAwal(k) { return request.resource.data.get(k, 0) in [0, 1]; }
+
     // Transaksi kas: jenis harus masuk/keluar, jumlah harus angka > 0
     function validTrx() {
       return request.resource.data.tipe in ['masuk', 'keluar']
@@ -65,6 +69,24 @@ service cloud.firestore {
     match /audit_log/{id} {
       allow read, create: if isAdmin();
       allow update, delete: if false;
+    }
+
+    // Hitungan pengunjung per hari (ID dokumen = YYYY-MM-DD). Baca & hapus hanya admin.
+    // Catatan: aturan tidak bisa membatasi jumlah tulisan per detik, jadi angka ini perkiraan, bukan alat audit.
+    match /stats_harian/{tgl} {
+      allow read, delete: if isAdmin();
+      allow create: if tgl.matches('^[0-9]{4}-[0-9]{2}-[0-9]{2}$')
+        && request.resource.data.keys().hasOnly(['tanggal', 'kunjungan', 'unik', 'hp', 'desktop', 'src_langsung', 'src_google', 'src_facebook', 'src_instagram', 'src_whatsapp', 'src_telegram', 'src_lain'])
+        && request.resource.data.tanggal == tgl
+        && request.resource.data.kunjungan == 1
+        && statAwal('unik') && statAwal('hp') && statAwal('desktop')
+        && statAwal('src_langsung') && statAwal('src_google') && statAwal('src_facebook') && statAwal('src_instagram')
+        && statAwal('src_whatsapp') && statAwal('src_telegram') && statAwal('src_lain');
+      allow update: if request.resource.data.diff(resource.data).affectedKeys().hasOnly(['kunjungan', 'unik', 'hp', 'desktop', 'src_langsung', 'src_google', 'src_facebook', 'src_instagram', 'src_whatsapp', 'src_telegram', 'src_lain'])
+        && (request.resource.data.get('kunjungan', 0) - resource.data.get('kunjungan', 0)) == 1
+        && statNaik('unik') && statNaik('hp') && statNaik('desktop')
+        && statNaik('src_langsung') && statNaik('src_google') && statNaik('src_facebook') && statNaik('src_instagram')
+        && statNaik('src_whatsapp') && statNaik('src_telegram') && statNaik('src_lain');
     }
 
     // Koleksi lain yang tidak disebut di atas: ditolak (default)

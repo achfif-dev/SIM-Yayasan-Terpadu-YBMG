@@ -6,12 +6,13 @@ import { onAuthStateChanged, signOut } from 'firebase/auth';
 import {
   addDoc, collection, deleteDoc, doc, getDoc, getDocs, limit, orderBy, query, serverTimestamp, setDoc, updateDoc,
 } from 'firebase/firestore';
-import { Building2, Landmark, Users, Wallet, LogOut, Loader2, Pencil, Trash2, Plus, Upload, Home, Paperclip, Megaphone, CalendarDays, Image as ImageIcon, Palette, RotateCcw, Repeat, ShieldCheck, DatabaseBackup } from 'lucide-react';
+import { Building2, Landmark, Users, Wallet, LogOut, Loader2, Pencil, Trash2, Plus, Upload, Home, Paperclip, Megaphone, CalendarDays, Image as ImageIcon, BarChart3, Palette, RotateCcw, Repeat, ShieldCheck, DatabaseBackup } from 'lucide-react';
 import Link from 'next/link';
 import { getAuthInstance, getDb } from '../../lib/firebase';
 import { cekAdmin, isOwnerEmail } from '../../lib/admin';
 import AdminAkses from '../../components/AdminAkses';
 import AdminCadangan from '../../components/AdminCadangan';
+import AdminStatistik from '../../components/AdminStatistik';
 import { uploadImage, deleteBukti } from '../../lib/upload';
 import { BuktiField } from '../../components/Bukti';
 import LaporanKas from '../../components/LaporanKas';
@@ -733,6 +734,7 @@ function KasTab() {
 
 const TABS = [
   { id: 'profil', label: 'Identitas', icon: Building2 },
+  { id: 'statistik', label: 'Pengunjung', icon: BarChart3 },
   { id: 'tampilan', label: 'Tampilan', icon: Palette },
   { id: 'lembaga', label: 'Lembaga', icon: Landmark },
   { id: 'pengurus', label: 'Pengurus', icon: Users },
@@ -758,7 +760,10 @@ export default function AdminPage() {
       const ok = u.emailVerified && await cekAdmin(u);
       if (batal) return;
       if (!ok) { signOut(getAuthInstance()).finally(() => router.replace('/login')); }
-      else { setUser(u); setReady(true); }
+      else {
+        try { localStorage.setItem('ybmg_no_stat', '1'); } catch (e) { /* abaikan */ } // browser admin tidak dihitung sebagai pengunjung
+        setUser(u); setReady(true);
+      }
     });
     return () => { batal = true; unsub(); };
   }, [router]);
@@ -789,6 +794,7 @@ export default function AdminPage() {
           ))}
         </div>
         {tab === 'profil' && <ProfileTab />}
+        {tab === 'statistik' && <AdminStatistik />}
         {tab === 'tampilan' && <TampilanTab />}
         {tab === 'lembaga' && (
           <>

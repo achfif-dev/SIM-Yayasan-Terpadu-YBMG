@@ -17,6 +17,7 @@ import SocialIcons from '../components/SocialIcons';
 import { DEFAULT_TAMPILAN, HERO_PAD, applyTheme, heroPhotoStyle, heroSrc, isYa, mergeTampilan, socialLinks } from '../lib/tampilan';
 import { optimizeUrl } from '../lib/cdn';
 import { CACHE_TTL, cached, useInView } from '../lib/hemat';
+import { catatKunjungan } from '../lib/statistik';
 
 const DEFAULT_PROFILE = {
   namaYayasan: 'Yayasan Kita Bersama',
@@ -70,6 +71,8 @@ export default function HomePage() {
   const keuRef = useRef(null);
   const [filter, setFilter] = useState('Semua');
   const [open, setOpen] = useState(false);
+
+  useEffect(() => { catatKunjungan(); }, []);
 
   useEffect(() => {
     let alive = true;
