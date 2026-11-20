@@ -1,5 +1,6 @@
 import './globals.css';
 import { THEME_BOOT_SCRIPT } from '../lib/tampilan';
+import Splash from '../components/Splash';
 
 const FALLBACK_TITLE = 'Sistem Informasi Yayasan Terpadu';
 const FALLBACK_DESC = 'Sistem informasi manajemen yayasan: keagamaan, sosial, dan kemanusiaan.';
@@ -60,14 +61,21 @@ export async function generateMetadata() {
   return meta;
 }
 
-export default function RootLayout({ children }) {
+// Logo untuk layar pembuka: hanya https atau data URL gambar yang wajar ukurannya (data URL = logo tersimpan di Firestore)
+const logoAman = (u) => (/^https:\/\//i.test(u || '') || (/^data:image\//i.test(u || '') && u.length < 150000) ? u : '');
+
+export default async function RootLayout({ children }) {
+  const p = await fetchProfile(); // fetch yang sama dengan generateMetadata (di-cache Next, tanpa baca tambahan)
   return (
     <html lang="id" suppressHydrationWarning>
       <head>
         {/* Terapkan tema tersimpan sebelum halaman tampil, agar tidak berkedip */}
         <script dangerouslySetInnerHTML={{ __html: THEME_BOOT_SCRIPT }} />
       </head>
-      <body>{children}</body>
+      <body>
+        <Splash logo={logoAman(p?.logoUrl)} nama={p?.namaYayasan || ''} />
+        {children}
+      </body>
     </html>
   );
 }

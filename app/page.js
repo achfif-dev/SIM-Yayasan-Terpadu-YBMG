@@ -18,6 +18,7 @@ import { DEFAULT_TAMPILAN, HERO_PAD, applyTheme, heroPhotoStyle, heroSrc, isYa, 
 import { optimizeUrl } from '../lib/cdn';
 import { CACHE_TTL, cached, useInView } from '../lib/hemat';
 import { catatKunjungan } from '../lib/statistik';
+import { EVENT_SIAP } from '../components/Splash';
 
 const DEFAULT_PROFILE = {
   namaYayasan: 'Yayasan Kita Bersama',
@@ -73,6 +74,27 @@ export default function HomePage() {
   const [open, setOpen] = useState(false);
 
   useEffect(() => { catatKunjungan(); }, []);
+
+  // Beranda dianggap siap (layar pembuka dibuka) setelah profil + tema termuat DAN foto hero (bila ada) selesai diunduh,
+  // supaya tidak ada tampilan bawaan / hero polos yang berganti beberapa detik setelah refresh.
+  useEffect(() => {
+    if (!profileReady) return undefined;
+    let sudah = false;
+    const siap = () => {
+      if (sudah) return;
+      sudah = true;
+      window.__ybmgSiap = true;
+      window.dispatchEvent(new Event(EVENT_SIAP));
+    };
+    const src = optimizeUrl(heroSrc(tpl), 1600);
+    if (!src) { siap(); return undefined; }
+    const img = new window.Image();
+    img.onload = siap;
+    img.onerror = siap;
+    img.src = src;
+    const t = setTimeout(siap, 2500); // jangan tunggu foto lebih dari 2,5 detik
+    return () => clearTimeout(t);
+  }, [profileReady, tpl]);
 
   useEffect(() => {
     let alive = true;
