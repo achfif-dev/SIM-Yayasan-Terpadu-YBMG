@@ -8,6 +8,7 @@ import { optimizeUrl } from '../lib/cdn';
 import { CACHE_TTL, cached, useInView } from '../lib/hemat';
 import { BULAN, BULAN_SINGKAT } from '../lib/laporan';
 import KalenderBulanan from './KalenderBulanan';
+import BagikanFoto from './BagikanFoto';
 import { buatICS, googleKalenderUrl, jadwalPekan, teksWA, teksWAPekan, unduhICS, waUrl } from '../lib/kalender';
 import { KELOMPOK, berikutnya, berikutnyaTanpaLibur, pengecualianTeks, polaTeks, tglHijriTeks } from '../lib/rutin';
 
@@ -279,7 +280,7 @@ export default function Konten({ institutions = [], showBerita = true, showGaler
       )}
 
       {light !== null && galList[light] && (
-        <Lightbox list={galList.slice(0, galShow)} index={light} setIndex={setLight} />
+        <Lightbox list={galList.slice(0, galShow)} index={light} setIndex={setLight} opsi={opsiKal} />
       )}
     </>
   );
@@ -346,7 +347,7 @@ function RutinCard({ r, today, opsi }) {
   );
 }
 
-function Lightbox({ list, index, setIndex }) {
+function Lightbox({ list, index, setIndex, opsi }) {
   const g = list[index];
   const go = (d) => setIndex((i) => (i + d + list.length) % list.length);
   useEffect(() => {
@@ -370,6 +371,7 @@ function Lightbox({ list, index, setIndex }) {
       <p className="mt-3 max-w-xl text-center text-sm text-white" onClick={(e) => e.stopPropagation()}>
         {g.keterangan} <span className="text-white/60">· {tglPanjang(g.tanggal)}{g.lembaga ? ` · ${g.lembaga}` : ''}</span>
       </p>
+      <div className="mt-3" onClick={(e) => e.stopPropagation()}><BagikanFoto foto={g} opsi={opsi} gelap /></div>
     </div>
   );
 }
