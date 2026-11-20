@@ -6,13 +6,15 @@ import { onAuthStateChanged, signOut } from 'firebase/auth';
 import {
   addDoc, collection, deleteDoc, doc, getDoc, getDocs, limit, orderBy, query, serverTimestamp, setDoc, updateDoc,
 } from 'firebase/firestore';
-import { Building2, Landmark, Users, Wallet, LogOut, Loader2, Pencil, Trash2, Plus, Upload, Home, Paperclip, Megaphone, CalendarDays, Image as ImageIcon, BarChart3, Palette, RotateCcw, Repeat, ShieldCheck, DatabaseBackup } from 'lucide-react';
+import { Building2, Landmark, Users, Wallet, LogOut, Loader2, Pencil, Trash2, Plus, Upload, Home, Paperclip, Megaphone, CalendarDays, Image as ImageIcon, BarChart3, ClipboardList, HeartHandshake, Palette, RotateCcw, Repeat, ShieldCheck, DatabaseBackup } from 'lucide-react';
 import Link from 'next/link';
 import { getAuthInstance, getDb } from '../../lib/firebase';
 import { cekAdmin, isOwnerEmail } from '../../lib/admin';
 import AdminAkses from '../../components/AdminAkses';
 import AdminCadangan from '../../components/AdminCadangan';
 import AdminStatistik from '../../components/AdminStatistik';
+import AdminKepanitiaan from '../../components/AdminKepanitiaan';
+import AdminDonatur from '../../components/AdminDonatur';
 import { uploadImage, deleteBukti } from '../../lib/upload';
 import { BuktiField } from '../../components/Bukti';
 import LaporanKas from '../../components/LaporanKas';
@@ -739,6 +741,8 @@ const TABS = [
   { id: 'lembaga', label: 'Lembaga', icon: Landmark },
   { id: 'pengurus', label: 'Pengurus', icon: Users },
   { id: 'kas', label: 'Kas', icon: Wallet },
+  { id: 'kepanitiaan', label: 'Kepanitiaan', icon: ClipboardList },
+  { id: 'donatur', label: 'Donatur', icon: HeartHandshake },
   { id: 'berita', label: 'Berita', icon: Megaphone },
   { id: 'kegiatan', label: 'Kegiatan', icon: CalendarDays },
   { id: 'rutin', label: 'Rutin', icon: Repeat },
@@ -820,6 +824,8 @@ export default function AdminPage() {
             renderItem={(m) => (<><p className="font-semibold">#{m.urutan} {m.nama}</p><p className="text-slate-500">{m.jabatan} · {m.divisi}</p></>)} />
         )}
         {tab === 'kas' && <KasTab />}
+        {tab === 'kepanitiaan' && <AdminKepanitiaan />}
+        {tab === 'donatur' && <AdminDonatur />}
         {tab === 'berita' && (
           <CrudTab col="announcements" fields={ANN_FIELDS} sort={byTanggal}
             renderItem={(a) => (<><p className="font-semibold">{a.sematkan === 'Ya' && '📌 '}{a.judul}</p><p className="truncate text-slate-500">{a.tanggal} · {a.lembaga || 'Umum'}</p></>)} />
