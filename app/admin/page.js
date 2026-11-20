@@ -343,6 +343,33 @@ function TampilanTab() {
 // susun(list) = urutan khusus seluruh daftar; siapkan(data, daftar) = ubah data sebelum disimpan; cegahHapus(item, daftar) = pesan bila tak boleh dihapus
 // Unggah banyak foto galeri sekaligus. Tiap foto punya tanggal & keterangan sendiri,
 // jadi satu kali unggah bisa berisi foto dari satu tanggal maupun beberapa tanggal berbeda.
+// Di HP Android, File dari pemilih foto bisa menjadi tidak terbaca ("Gagal membaca file") bila baru dibaca
+// beberapa saat kemudian. Jadi isi foto langsung disalin ke memori saat dipilih, sekaligus diperkecil
+// (maks 1600 px) agar 40 foto tidak memenuhi memori HP.
+async function salinFoto(file, maks = 1600, kualitas = 0.92) {
+  const mentah = new Blob([await file.arrayBuffer()], { type: file.type || 'image/jpeg' });
+  return new Promise((resolve) => {
+    const url = URL.createObjectURL(mentah);
+    const img = new window.Image();
+    img.onload = () => {
+      try {
+        const sk = Math.min(1, maks / Math.max(img.width, img.height));
+        const c = document.createElement('canvas');
+        c.width = Math.round(img.width * sk);
+        c.height = Math.round(img.height * sk);
+        const ctx = c.getContext('2d');
+        ctx.fillStyle = '#fff';
+        ctx.fillRect(0, 0, c.width, c.height);
+        ctx.drawImage(img, 0, 0, c.width, c.height);
+        URL.revokeObjectURL(url);
+        c.toBlob((b) => resolve(b || mentah), 'image/jpeg', kualitas);
+      } catch (err) { URL.revokeObjectURL(url); resolve(mentah); }
+    };
+    img.onerror = () => { URL.revokeObjectURL(url); resolve(mentah); };
+    img.src = url;
+  });
+}
+
 const MAKS_FOTO = 40;
 const TGL_OK = /^\d{4}-\d{2}-\d{2}$/;
 function GaleriMassal({ onDone }) {
@@ -350,6 +377,7 @@ function GaleriMassal({ onDone }) {
   const [tglUmum, setTglUmum] = useState(toStr(new Date()));
   const [lembaga, setLembaga] = useState('');
   const [busy, setBusy] = useState(false);
+  const [menyiapkan, setMenyiapkan] = useState(false);
   const [msg, setMsg] = useState('');
   const itemsRef = useRef([]);
   itemsRef.current = items;
@@ -357,17 +385,30 @@ function GaleriMassal({ onDone }) {
 
   const ubah = (key, patch) => setItems((p) => p.map((i) => (i.key === key ? { ...i, ...patch } : i)));
 
-  const tambah = (e) => {
-    const files = [...(e.target.files || [])].filter((f) => f.type.startsWith('image/'));
-    e.target.value = ''; // supaya foto yang sama bisa dipilih lagi
-    if (!files.length) return;
+  const tambah = async (e) => {
+    const input = e.target;
+    const files = [...(input.files || [])].filter((f) => f.type.startsWith('image/'));
+    if (!files.length) { input.value = ''; return; }
     const sisa = Math.max(0, MAKS_FOTO - itemsRef.current.length);
-    const baru = files.slice(0, sisa).map((file) => ({
-      key: `${Date.now()}-${Math.random().toString(36).slice(2)}`,
-      file, url: URL.createObjectURL(file), tanggal: tglUmum, keterangan: '', status: '', err: '',
-    }));
-    setItems((p) => [...p, ...baru]);
-    setMsg(files.length > sisa ? `Maksimal ${MAKS_FOTO} foto per unggahan; ${files.length - sisa} foto tidak dimasukkan.` : '');
+    const dipilih = files.slice(0, sisa);
+    setMenyiapkan(true);
+    setMsg('');
+    let gagalBaca = 0;
+    for (const file of dipilih) { // satu per satu, hemat memori
+      try {
+        const blob = await salinFoto(file);
+        setItems((p) => [...p, {
+          key: `${Date.now()}-${Math.random().toString(36).slice(2)}`,
+          file: blob, url: URL.createObjectURL(blob), tanggal: tglUmum, keterangan: '', status: '', err: '',
+        }]);
+      } catch (err) { gagalBaca += 1; }
+    }
+    input.value = ''; // reset setelah semua foto tersalin; foto yang sama bisa dipilih lagi
+    setMenyiapkan(false);
+    const info = [];
+    if (files.length > sisa) info.push(`Maksimal ${MAKS_FOTO} foto per unggahan; ${files.length - sisa} foto tidak dimasukkan.`);
+    if (gagalBaca) info.push(`${gagalBaca} foto tidak bisa dibaca — pilih ulang dari galeri HP.`);
+    setMsg(info.join(' '));
   };
 
   const hapus = (key) => {
@@ -434,11 +475,11 @@ function GaleriMassal({ onDone }) {
         </div>
       </div>
       <div className="flex flex-wrap items-center gap-3">
-        <label className={`btn-light cursor-pointer ${busy || items.length >= MAKS_FOTO ? 'pointer-events-none opacity-50' : ''}`}>
-          <Upload size={14} /> Pilih foto
-          <input type="file" accept="image/*" multiple className="hidden" onChange={tambah} disabled={busy} />
+        <label className={`btn-light cursor-pointer ${busy || menyiapkan || items.length >= MAKS_FOTO ? 'pointer-events-none opacity-50' : ''}`}>
+          {menyiapkan ? <Loader2 size={14} className="animate-spin" /> : <Upload size={14} />} {menyiapkan ? 'Menyiapkan…' : 'Pilih foto'}
+          <input type="file" accept="image/*" multiple className="hidden" onChange={tambah} disabled={busy || menyiapkan} />
         </label>
-        <button type="button" className="btn" disabled={busy || !jumlah} onClick={unggah}>
+        <button type="button" className="btn" disabled={busy || menyiapkan || !jumlah} onClick={unggah}>
           {busy ? <Loader2 size={14} className="animate-spin" /> : <Plus size={14} />} Unggah {jumlah ? `${jumlah} foto` : ''}
         </button>
         <span className="text-sm text-slate-500">{msg}</span>
