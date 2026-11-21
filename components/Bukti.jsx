@@ -4,7 +4,7 @@ import { useEffect, useState } from 'react';
 import { doc, getDoc } from 'firebase/firestore';
 import { Loader2, Upload, X, Trash2 } from 'lucide-react';
 import { getDb } from '../lib/firebase';
-import { RECEIPT_PREFIX, uploadBukti } from '../lib/upload';
+import { PRIVAT_PREFIX, RECEIPT_PREFIX, uploadBukti } from '../lib/upload';
 
 // value: URL (Cloudinary) atau "receipt:<id>" (disimpan di koleksi receipts)
 export function useBuktiSrc(value) {
@@ -16,10 +16,11 @@ export function useBuktiSrc(value) {
     let alive = true;
     setFailed(false);
     if (!value) { setSrc(''); setLoading(false); return undefined; }
-    if (!value.startsWith(RECEIPT_PREFIX)) { setSrc(value); setLoading(false); return undefined; }
+    const privat = value.startsWith(PRIVAT_PREFIX);
+    if (!privat && !value.startsWith(RECEIPT_PREFIX)) { setSrc(value); setLoading(false); return undefined; }
     setSrc('');
     setLoading(true);
-    getDoc(doc(getDb(), 'receipts', value.slice(RECEIPT_PREFIX.length)))
+    getDoc(doc(getDb(), privat ? 'bukti_donasi' : 'receipts', value.slice((privat ? PRIVAT_PREFIX : RECEIPT_PREFIX).length)))
       .then((s) => { if (!alive) return; if (s.exists()) setSrc(s.data().data || ''); else setFailed(true); })
       .catch(() => { if (alive) setFailed(true); })
       .finally(() => { if (alive) setLoading(false); });
@@ -43,7 +44,7 @@ export function BuktiModal({ value, onClose }) {
   );
 }
 
-export function BuktiField({ value, onChange, label = 'Upload foto nota' }) {
+export function BuktiField({ value, onChange, label = 'Upload foto nota', privat = false }) {
   const [busy, setBusy] = useState(false);
   const { src } = useBuktiSrc(value);
 
@@ -52,7 +53,7 @@ export function BuktiField({ value, onChange, label = 'Upload foto nota' }) {
     e.target.value = '';
     if (!file) return;
     setBusy(true);
-    try { onChange(await uploadBukti(file)); } catch (err) { alert('Upload gagal: ' + err.message); }
+    try { onChange(await uploadBukti(file, { privat })); } catch (err) { alert('Upload gagal: ' + err.message); }
     setBusy(false);
   };
 

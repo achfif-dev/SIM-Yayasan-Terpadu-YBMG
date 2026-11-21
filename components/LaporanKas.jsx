@@ -1,9 +1,11 @@
 'use client';
 
 import { useMemo, useState } from 'react';
-import { FileSpreadsheet, FileText, Paperclip } from 'lucide-react';
-import { BULAN, UNITS, availableYears, buildReport, exportExcel, exportPdf, fmtTanggal, periodLabel, rupiah } from '../lib/laporan';
+import { FileSpreadsheet, Paperclip } from 'lucide-react';
+import { BULAN, UNITS, availableYears, buildReport, exportExcel, fmtTanggal, periodLabel, rupiah } from '../lib/laporan';
 import { BuktiModal } from './Bukti';
+import PdfAksi from './PdfAksi';
+import { pdfKas } from '../lib/pdfdoc';
 
 function TimeChart({ buckets }) {
   const max = Math.max(1, ...buckets.flatMap((b) => [b.masuk, b.keluar]));
@@ -115,6 +117,17 @@ export default function LaporanKas({ trx, namaYayasan = 'Yayasan', statusHukum =
         </div>
       </div>
 
+      {report.perDana.some((d) => d.label !== 'Tidak terikat') && (
+        <div className="space-y-2 overflow-x-auto">
+          <h4 className="font-bold">Per jenis dana · {periodLabel(tahun, bulan)}</h4>
+          <p className="text-xs text-slate-500">Zakat, wakaf, dan infaq terikat dilaporkan terpisah dari dana tidak terikat.</p>
+          <table className="w-full text-sm">
+            <thead><tr className="text-left text-slate-500"><th className="py-1">Jenis dana</th><th className="py-1 text-right">Saldo awal</th><th className="py-1 text-right">Masuk</th><th className="py-1 text-right">Keluar</th><th className="py-1 text-right">Saldo akhir</th></tr></thead>
+            <tbody>{report.perDana.map((d) => (<tr key={d.label} className="border-t"><td className="py-1.5">{d.label}</td><td className="py-1.5 text-right tabular-nums">{rupiah(d.saldoAwal)}</td><td className="py-1.5 text-right tabular-nums">{rupiah(d.masuk)}</td><td className="py-1.5 text-right tabular-nums">{rupiah(d.keluar)}</td><td className="py-1.5 text-right tabular-nums font-semibold">{rupiah(d.saldoAkhir)}</td></tr>))}</tbody>
+          </table>
+        </div>
+      )}
+
       {report.perLembaga.length > 0 && (
         <div className="space-y-2">
           <h4 className="font-bold">Per lembaga &amp; sub unit · {periodLabel(tahun, bulan)}</h4>
@@ -146,7 +159,7 @@ export default function LaporanKas({ trx, namaYayasan = 'Yayasan', statusHukum =
         <h4 className="font-bold">Rincian transaksi ({rows.length})</h4>
         <div className="flex gap-2">
           <button className="btn-light" onClick={() => exportExcel(report, meta)}><FileSpreadsheet size={14} /> Excel</button>
-          <button className="btn-light" onClick={() => exportPdf(report, meta)}><FileText size={14} /> PDF</button>
+          <PdfAksi buat={() => pdfKas({ profil: { namaYayasan, statusHukum }, report, meta })} versi={`${unit}|${tahun}|${bulan}|${trx.length}`} label="PDF" />
         </div>
       </div>
 

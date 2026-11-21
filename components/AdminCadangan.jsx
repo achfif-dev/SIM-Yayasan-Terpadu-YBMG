@@ -1,9 +1,12 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
-import { Timestamp, addDoc, collection, doc, getDocs, serverTimestamp, writeBatch } from 'firebase/firestore';
+import { Timestamp, collection, doc, getDocs, writeBatch } from 'firebase/firestore';
 import { AlertTriangle, DatabaseBackup, Download, Loader2, Upload } from 'lucide-react';
-import { getAuthInstance, getDb } from '../lib/firebase';
+import { getDb } from '../lib/firebase';
+import { isiLog, refLog } from '../lib/audit';
+import { simpanRingkasan } from '../lib/ringkasan';
+import { clearCache } from '../lib/hemat';
 import { KOLEKSI, buatBerkas, hariSejak, namaBerkas, periksaBerkas, serial, susunOperasi } from '../lib/cadangan';
 
 const KUNCI = 'cadangan_terakhir';
@@ -83,9 +86,21 @@ export default function AdminCadangan({ isOwner = false }) {
         await b.commit();
         tulis += Math.min(BATCH, ops.length - i);
       }
-      // jejak audit (tidak bisa diubah) supaya pemulihan terlihat di Riwayat Kas
-      try { await addDoc(collection(db, 'audit_log'), { koleksi: '(pemulihan)', aksi: `pulihkan ${ops.length} dokumen dari ${berkas.nama}`, docId: '-', sebelum: null, sesudah: null, oleh: getAuthInstance().currentUser?.email || '', waktu: serverTimestamp() }); } catch (e) { /* abaikan */ }
-      setStatus(`✅ Selesai: ${ops.length} dokumen dipulihkan. Muat ulang halaman admin untuk melihat hasilnya.`);
+      // jejak audit (tidak bisa diubah): rincian jumlah per koleksi, supaya terlihat apa saja yang ditimpa
+      const perKoleksi = {};
+      ops.forEach((o) => { perKoleksi[o.path[0]] = (perKoleksi[o.path[0]] || 0) + 1; });
+      try { await writeBatch(db).set(refLog(), isiLog({ koleksi: '(pemulihan)', aksi: `pulihkan ${ops.length} dokumen dari ${berkas.nama}`, docId: '-', sesudah: perKoleksi })).commit(); } catch (e) { /* abaikan */ }
+      // Saldo beranda dibaca dari settings/ringkasanKas: bangun ulang dari transaksi hasil pemulihan agar tidak selisih
+      let infoRingkasan = '';
+      if (perKoleksi.transactions || perKoleksi.settings) {
+        try {
+          const t = await getDocs(collection(db, 'transactions'));
+          await simpanRingkasan(t.docs.map((x) => ({ id: x.id, ...x.data() })));
+          clearCache();
+          infoRingkasan = ' Ringkasan kas beranda sudah dibangun ulang.';
+        } catch (e) { infoRingkasan = ' ⚠️ Ringkasan kas gagal dibangun ulang: buka Admin → Kas → Bangun ulang ringkasan.'; }
+      }
+      setStatus(`✅ Selesai: ${ops.length} dokumen dipulihkan.${infoRingkasan} Muat ulang halaman admin untuk melihat hasilnya.`);
       setBerkas(null); setKonfirmasi(''); if (fileRef.current) fileRef.current.value = '';
     } catch (e) {
       setStatus(`❌ Pemulihan berhenti setelah ${tulis} dokumen: ${e.code || e.message}. Dokumen sebelumnya sudah tertulis; ulangi dengan berkas yang sama aman dilakukan.`);
@@ -111,12 +126,13 @@ export default function AdminCadangan({ isOwner = false }) {
             </label>
           ))}
         </div>
-        <p className="text-xs text-slate-500">Setiap dokumen yang dibaca (termasuk catatan kas kegiatan) dihitung 1 pembacaan Firestore (batas gratis 50.000/hari), jadi aman dilakukan beberapa kali sebulan. Foto nota yang tersimpan di Cloudinary tidak ikut terunduh; yang ikut hanya tautannya.</p>
+        <p className="text-xs text-slate-500">Setiap dokumen yang dibaca (termasuk catatan kas kegiatan) dihitung 1 pembacaan Firestore (batas gratis 50.000/hari), jadi aman dilakukan beberapa kali sebulan. Foto nota yang tersimpan di Cloudinary tidak ikut terunduh; yang ikut hanya tautannya. <b>Berkas cadangan memuat nomor WhatsApp donatur dan tidak terenkripsi</b>: simpan hanya di tempat pribadi yang aman dan jangan dikirim lewat chat.</p>
         <button className="btn" onClick={unduh} disabled={busy || !daftar.some((k) => pilih[k.id])}>
           {busy ? <Loader2 size={14} className="animate-spin" /> : <Download size={14} />} Unduh cadangan (.json)
         </button>
       </section>
 
+      {isOwner ? (
       <section className="space-y-3 rounded-2xl bg-white p-4 shadow-sm">
         <h2 className="flex items-center gap-2 font-bold text-brand-800"><Upload size={18} /> Pulihkan dari cadangan</h2>
         <p className="text-sm text-slate-600">
@@ -143,6 +159,9 @@ export default function AdminCadangan({ isOwner = false }) {
           </div>
         )}
       </section>
+      ) : (
+        <p className="rounded-xl bg-slate-100 p-4 text-sm text-slate-600">Pemulihan dari cadangan hanya tersedia untuk pemilik, karena menimpa data kas dan dokumen lain tanpa jejak per dokumen.</p>
+      )}
       {status && <p className="text-sm text-slate-700">{status}</p>}
     </div>
   );

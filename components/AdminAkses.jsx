@@ -1,10 +1,11 @@
 'use client';
 
 import { useCallback, useEffect, useState } from 'react';
-import { collection, deleteDoc, doc, getDocs, serverTimestamp, setDoc } from 'firebase/firestore';
+import { collection, doc, getDocs, serverTimestamp, writeBatch } from 'firebase/firestore';
 import { Loader2, ShieldCheck, Trash2, UserPlus } from 'lucide-react';
 import { getAuthInstance, getDb } from '../lib/firebase';
 import { ownerEmails } from '../lib/admin';
+import { isiLog, refLog } from '../lib/audit';
 
 const EMAIL_RE = /^[^\s@/]+@[^\s@/]+\.[^\s@/]+$/;
 const waktu = (t) => (t?.seconds ? new Date(t.seconds * 1000).toLocaleDateString('id-ID') : '');
@@ -32,7 +33,10 @@ export default function AdminAkses() {
     if (ownerEmails().includes(id)) { setMsg('Email ini sudah pemilik (selalu punya akses).'); return; }
     setBusy(true); setMsg('');
     try {
-      await setDoc(doc(getDb(), 'admins', id), { email: id, catatan: catatan.trim(), ditambahOleh: getAuthInstance().currentUser?.email || '', dibuat: serverTimestamp() });
+      const b = writeBatch(getDb());
+      b.set(doc(getDb(), 'admins', id), { email: id, catatan: catatan.trim(), ditambahOleh: getAuthInstance().currentUser?.email || '', dibuat: serverTimestamp() });
+      b.set(refLog(), isiLog({ koleksi: 'admins', aksi: 'tambah', docId: id, sesudah: { catatan: catatan.trim() || null }, sumber: 'akses' }));
+      await b.commit();
       setEmail(''); setCatatan(''); setMsg(`✅ ${id} ditambahkan sebagai admin.`);
       await load();
     } catch (err) { setMsg('Gagal menambah: ' + err.message); }
@@ -41,7 +45,12 @@ export default function AdminAkses() {
 
   const hapus = async (id) => {
     if (!window.confirm(`Cabut akses admin untuk ${id}?`)) return;
-    try { await deleteDoc(doc(getDb(), 'admins', id)); setMsg(`Akses ${id} dicabut.`); await load(); } catch (err) { setMsg('Gagal mencabut: ' + err.message); }
+    try {
+      const b = writeBatch(getDb());
+      b.delete(doc(getDb(), 'admins', id));
+      b.set(refLog(), isiLog({ koleksi: 'admins', aksi: 'hapus', docId: id, sumber: 'akses' }));
+      await b.commit();
+      setMsg(`Akses ${id} dicabut.`); await load(); } catch (err) { setMsg('Gagal mencabut: ' + err.message); }
   };
 
   return (
