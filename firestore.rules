@@ -25,7 +25,8 @@ service cloud.firestore {
     function validTrx() {
       return request.resource.data.tipe in ['masuk', 'keluar']
         && request.resource.data.jumlah is number
-        && request.resource.data.jumlah > 0;
+        && request.resource.data.jumlah > 0
+        && request.resource.data.get('dana', 'Tidak terikat') in ['Tidak terikat', 'Zakat', 'Wakaf', 'Infaq terikat'];
     }
 
     // Koleksi yang tampil di beranda: baca publik, tulis hanya admin
@@ -65,9 +66,14 @@ service cloud.firestore {
       allow list, write: if isAdmin();
     }
 
-    // Riwayat perubahan kas: hanya admin yang bisa baca/tambah; tidak bisa diubah atau dihapus
+    // Riwayat perubahan: hanya admin yang bisa baca/tambah; tidak bisa diubah atau dihapus.
+    // `oleh` wajib sama dengan email akun yang sedang login dan `waktu` wajib waktu server, jadi log tidak bisa
+    // dipalsukan atas nama admin lain atau diberi tanggal mundur.
     match /audit_log/{id} {
-      allow read, create: if isAdmin();
+      allow read: if isAdmin();
+      allow create: if isAdmin()
+        && request.resource.data.oleh == request.auth.token.email.lower()
+        && request.resource.data.waktu == request.time;
       allow update, delete: if false;
     }
 
@@ -107,6 +113,9 @@ service cloud.firestore {
 
     // Buku donatur (memuat nomor WhatsApp): hanya admin
     match /donations/{id} { allow read, write: if isAdmin(); }
+
+    // Bukti transfer donasi (memuat nomor rekening/nama): hanya admin. Berbeda dengan `receipts` (nota kas, terbuka per-ID).
+    match /bukti_donasi/{id} { allow read, write: if isAdmin(); }
 
     // Koleksi lain yang tidak disebut di atas: ditolak (default)
   }

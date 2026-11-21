@@ -102,13 +102,13 @@ Nama cloud dan preset berada di `NEXT_PUBLIC_*`, jadi siapa pun bisa mengunggah 
 - Foto lama yang sudah tersimpan di Firestore tetap di sana sampai diunggah ulang. Foto latar juga bisa berupa URL atau file di folder `public/` (mis. `/latar.jpg`).
 
 ## Sumbangan umum yayasan → kas otomatis + ucapan terima kasih
-- **Admin → Donatur**: bila sumbangan **tidak** dipilih untuk kegiatan (Umum), sumbangan otomatis dicatat sebagai pemasukan di koleksi `transactions` (ID `d_<idDonasi>`), lengkap dengan jejak di Riwayat Kas (`audit_log`) dan pembaruan inkremental `settings/ringkasanKas`. Tidak perlu lagi mengetik ulang di tab Kas, dan tidak perlu mengubah `firestore.rules`.
+- **Admin → Donatur**: bila sumbangan **tidak** dipilih untuk kegiatan (Umum), sumbangan otomatis dicatat sebagai pemasukan di koleksi `transactions` (ID `d_<idDonasi>`), lengkap dengan jejak di Riwayat Kas (`audit_log`) dan pembaruan inkremental `settings/ringkasanKas`. Tidak perlu lagi mengetik ulang di tab Kas, (rules perlu diperbarui: lihat bagian "Perbaikan hasil audit" di bawah).
 - Admin memilih **Kas bidang** (Keagamaan/Sosial/Kemanusiaan; wajib) dan, bila perlu, lembaga/sub unit (daftar disaring menurut bidang; divalidasi oleh `validasiKas`). Pilihan bidang terakhir diingat di browser.
 - **Privasi**: transaksi kas tampil publik, jadi keterangan otomatis ditulis `Infaq umum · Hamba Allah`. Nama donatur hanya ditulis bila kotak "Tampilkan nama donatur di laporan kas publik" dicentang. Nomor WhatsApp tidak pernah masuk ke kas.
-- Menghapus donasi ikut mencabut pemasukannya dari kas (dan menurunkan ringkasan). Donasi umum lama tampil dengan tombol **Catat ke kas** (peringatan: jangan dipakai bila sudah pernah diketik manual di tab Kas).
+- Menghapus donasi ikut mencabut pemasukannya dari kas (dan menurunkan ringkasan). Donasi umum lama tampil dengan tombol **Catat ke kas** (aman diulang: tidak menggandakan; tetap jangan dipakai bila sudah pernah diketik manual di tab Kas dengan ID lain).
 - **Ucapan terima kasih** (WhatsApp/PDF) untuk sumbangan umum kini berbunyi "untuk mendukung program dan kegiatan <nama yayasan>" (`tujuanUcapan` di `lib/kegiatan.js`). Panel ucapan otomatis terbuka setelah simpan.
 - Logika ada di `lib/donasiKas.js`. Bila ringkasan belum pernah dibangun, beranda tetap membaca semua transaksi (perilaku lama), jadi tidak ada ringkasan parsial.
-- **Bukti transfer / lainnya**: form donasi punya kolom **Foto bukti transfer** (opsional), dan tiap donasi di riwayat bisa **menambah/mengganti** bukti (ikon unggah) atau **melihatnya** (ikon klip). Memakai jalur unggah yang sama dengan nota kas (`lib/upload.js`: Cloudinary bila aktif, kalau tidak koleksi `receipts`). Bukti hanya disimpan di dokumen `donations` (khusus admin) dan **sengaja tidak disalin** ke transaksi kas atau kas kegiatan karena bisa dibaca publik dan bukti transfer memuat nomor rekening/nama. Bukti ikut terhapus bersama donasinya; unggahan yang dibatalkan dibersihkan otomatis.
+- **Bukti transfer / lainnya**: form donasi punya kolom **Foto bukti transfer** (opsional), dan tiap donasi di riwayat bisa **menambah/mengganti** bukti (ikon unggah) atau **melihatnya** (ikon klip). Memakai jalur unggah yang sama dengan nota kas (`lib/upload.js`: Cloudinary bila aktif, kalau tidak koleksi `receipts`). Bukti baru disimpan di koleksi `bukti_donasi` (khusus admin) dan **sengaja tidak disalin** ke transaksi kas atau kas kegiatan karena bisa dibaca publik dan bukti transfer memuat nomor rekening/nama. Bukti ikut terhapus bersama donasinya; unggahan yang dibatalkan dibersihkan otomatis.
 
 ## Layar pembuka berlogo (tanpa tampilan bawaan saat refresh)
 - Saat aplikasi dimuat/di-refresh, tampil layar pembuka berisi **logo & nama yayasan** (`components/Splash.jsx`). Logo dan nama dirender dari server di `app/layout.js` (dibaca dari `settings/profile`, di-cache 5 menit), jadi sudah ada di HTML pertama, juga pada kunjungan pertama saat cache browser masih kosong. Tanpa logo, dipakai ikon bangunan.
@@ -121,3 +121,25 @@ Nama cloud dan preset berada di `NEXT_PUBLIC_*`, jadi siapa pun bisa mengunggah 
 - Tampil tepat di **bawah nama yayasan** di: header, hero, dan footer beranda; layar pembuka; header laporan kegiatan publik (`/laporan`).
 - Ikut tercetak di: **kop semua PDF** (susunan panitia, laporan pertanggungjawaban), **PDF ucapan terima kasih**, **Excel & cetak PDF laporan kas**, serta semua **teks WhatsApp** (ucapan terima kasih, susunan panitia, laporan keuangan kegiatan, jadwal kegiatan & jadwal 7 hari).
 - Perubahan terlihat di beranda sampai ±10 menit (cache browser pengunjung) dan di layar pembuka sampai ±5 menit (cache server); PDF/teks yang dibuat dari panel admin langsung memakai nilai terbaru.
+
+## Perbaikan hasil audit (November 2026)
+
+**Wajib dilakukan setelah memasang pembaruan ini**
+1. **Publikasikan ulang `firestore.rules`** (Firebase Console → Firestore → Rules). Ada tiga perubahan: `audit_log` kini mewajibkan `oleh` = email yang login dan `waktu` = waktu server; koleksi baru `bukti_donasi` (khusus admin); validasi field `dana` pada transaksi. Tanpa rules baru, pencatatan kas/donasi akan ditolak karena log audit tidak lolos.
+2. `npm install` lalu **commit `package-lock.json`** agar build Vercel selalu memakai versi yang sama; jalankan `npm audit` dan `npm test`. Next 14 sudah tertinggal dua versi mayor: rencanakan upgrade.
+
+**Yang berubah**
+- **Donasi → kas atomik & idempoten** (`lib/donasiKas.js`): transaksi, jejak audit, ringkasan beranda, dan penanda `kasId` ditulis dalam satu `writeBatch`. Gagal = tidak ada yang tertulis, dan menekan "Catat ke kas" lagi tidak menggandakan ringkasan. Hapus donasi juga satu batch.
+- **Jejak audit atomik** (`lib/audit.js`): perubahan Kas dan log ditulis bersama; kini juga mencatat hapus donasi, tambah/cabut admin, dan pemulihan cadangan (rincian per koleksi).
+- **Jenis dana** (`dana`: Tidak terikat / Zakat / Wakaf / Infaq terikat): donasi berjenis Zakat/Wakaf otomatis ditandai; laporan kas (layar, Excel, PDF) menampilkan rincian saldo per jenis dana. Transaksi lama dianggap "Tidak terikat": tandai ulang yang perlu lewat Admin → Kas → Ubah. Ini alat pemisah pencatatan, bukan pengganti arahan akuntan/pengawas syariah tentang pengelolaan zakat dan wakaf.
+- **Cadangan**: pemulihan hanya untuk pemilik, ringkasan kas dibangun ulang otomatis setelah pemulihan, ada peringatan bahwa berkas memuat nomor WA.
+- **Privasi**: bukti transfer donasi baru disimpan di `bukti_donasi` (khusus admin); nama donatur di kas kegiatan kini *anonim secara bawaan*. Bukti lama di `receipts` dan berkas Cloudinary tetap berupa URL publik (tidak bisa dibuat privat dengan unsigned preset).
+- **`lembagaId`** pada transaksi: riwayat tetap tersambung bila lembaga diganti namanya (transaksi lama tetap dicocokkan lewat nama).
+- **PDF laporan kas** kini dibuat dengan jsPDF (`pdfKas` di `lib/pdfdoc.js`, tombol Bagikan/Unduh seperti LPJ), bukan lagi dialog cetak lewat popup yang sering diblokir di HP.
+- Daftar donatur: pencarian + "Muat 100 lebih lama". Header keamanan di `next.config.mjs`. Bug kecil `tglPanjang`. Tes unit (`tests/pure.test.js`) dan `.eslintrc.json`.
+
+**Keamanan tambahan: App Check (opsional, bertahap)**
+Isi `NEXT_PUBLIC_RECAPTCHA_SITE_KEY` (reCAPTCHA v3) lalu pantau di Firebase Console → App Check. Jangan langsung "Enforce" untuk Firestore: `layout.js`, `manifest.js`, dan halaman laporan membaca Firestore lewat REST tanpa token dari server, jadi akan ditolak (aplikasi jatuh ke nilai bawaan, mis. logo splash hilang). Rencana lanjutan yang lebih tuntas: pindahkan pembacaan publik ke server (Admin SDK + `revalidate`) lalu tutup baca publik di rules.
+
+**Belum dikerjakan**
+Beranda masih client-side (belum SSR/ISR); pembatasan pemulihan cadangan hanya di UI (rules tidak bisa membedakan pemilik); CSP baru terpasang sebagai *Report-Only* (`next.config.mjs`): pantau Console browser beberapa hari, perbaiki sumber yang terlaporkan, lalu ganti nama header menjadi `Content-Security-Policy`; CSP ketat tanpa `unsafe-inline` butuh nonce untuk skrip tema.
