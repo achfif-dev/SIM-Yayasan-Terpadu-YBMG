@@ -161,7 +161,7 @@ export default function AdminKepanitiaan() {
 
   return (
     <div className="space-y-5">
-      <p className="rounded-xl bg-brand-50 p-4 text-sm text-brand-900">Setiap kegiatan (Maulid, Isra' Mi'raj, dll.) punya <b>susunan panitia</b> dan <b>kas tersendiri</b> yang terpisah dari kas yayasan, lengkap dengan rincian belanja, foto nota, dan laporan pertanggungjawaban yang bisa dibagikan.</p>
+      <p className="rounded-xl bg-brand-50 p-4 text-sm text-brand-900">Setiap kegiatan (Maulid, Isra&apos; Mi&apos;raj, dll.) punya <b>susunan panitia</b> dan <b>kas tersendiri</b> yang terpisah dari kas yayasan, lengkap dengan rincian belanja, foto nota, dan laporan pertanggungjawaban yang bisa dibagikan.</p>
       {err && <p className="rounded-xl bg-red-50 p-4 text-sm text-red-700">{err}</p>}
       <form onSubmit={buat} className="space-y-3 rounded-2xl bg-white p-5 shadow-sm">
         <h3 className="font-bold">Kegiatan baru</h3>

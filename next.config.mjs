@@ -27,6 +27,8 @@ const headers = [
 const nextConfig = {
   reactStrictMode: true,
   poweredByHeader: false,
+  // Lint dijalankan manual (`npm run lint`), tidak menggagalkan build produksi. Sebelum ada .eslintrc.json, build tidak melakukan lint sama sekali.
+  eslint: { ignoreDuringBuilds: true },
   async headers() {
     return [{ source: '/:path*', headers }];
   },
