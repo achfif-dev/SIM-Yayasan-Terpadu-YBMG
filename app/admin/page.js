@@ -4,7 +4,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { onAuthStateChanged, signOut } from 'firebase/auth';
 import {
-  addDoc, collection, deleteDoc, doc, getDoc, getDocs, limit, orderBy, query, serverTimestamp, setDoc, updateDoc,
+  addDoc, collection, deleteDoc, doc, getDoc, getDocs, limit, orderBy, query, serverTimestamp, setDoc, updateDoc, writeBatch,
 } from 'firebase/firestore';
 import { Building2, Landmark, Users, Wallet, LogOut, Loader2, Pencil, Trash2, Plus, Upload, Home, Paperclip, Megaphone, CalendarDays, Image as ImageIcon, BarChart3, ClipboardList, HeartHandshake, Palette, RotateCcw, Repeat, ShieldCheck, DatabaseBackup, Menu, X } from 'lucide-react';
 import Link from 'next/link';
@@ -23,8 +23,9 @@ import { DEFAULT_TAMPILAN, TAMPILAN_GROUPS, applyTheme, mergeTampilan } from '..
 import { clearCache } from '../../lib/hemat';
 import { simpanRingkasan } from '../../lib/ringkasan';
 import { isCloudinaryOn } from '../../lib/cdn';
-import { BIDANG, normBidang } from '../../lib/bidang';
-import { JENIS_SUB, USAHA_DI, blokirHapus, opsiLembaga, siapkanLembaga, susunLembaga, urutkanLembaga, validasiKas, validasiLembaga } from '../../lib/lembaga';
+import { BIDANG, DANA, normBidang, normDana } from '../../lib/bidang';
+import { emailSaya, isiLog, refLog } from '../../lib/audit';
+import { JENIS_SUB, USAHA_DI, blokirHapus, idLembaga, opsiLembaga, siapkanLembaga, susunLembaga, urutkanLembaga, validasiKas, validasiLembaga } from '../../lib/lembaga';
 import { FREKUENSI, HARI_NAMA, BULAN_NAMA, BULAN_HIJRI, berikutnya, pengecualianTeks, polaTeks, toStr, validasiRutin } from '../../lib/rutin';
 
 const KATEGORI = BIDANG; // keagamaan, sosial, kemanusiaan (sesuai AD/ART)
@@ -65,6 +66,7 @@ const TRX_FIELDS = [
   { name: 'tipe', label: 'Jenis', type: 'select', options: ['masuk', 'keluar'] },
   { name: 'kategoriUnit', label: 'Bidang (Kas)', type: 'select', options: KATEGORI, norm: normBidang },
   { name: 'unitId', label: 'Lembaga / Sub Unit (opsional, untuk rincian laporan)', type: 'lembaga', kosong: 'Tanpa rincian lembaga' },
+  { name: 'dana', label: 'Jenis dana (zakat & wakaf dilaporkan terpisah dari dana umum)', type: 'select', options: DANA, init: 'Tidak terikat', norm: normDana },
   { name: 'jumlah', label: 'Jumlah (Rp)', type: 'number', required: true, min: 1 },
   { name: 'keterangan', label: 'Keterangan', type: 'textarea' },
   { name: 'bukti', label: 'Bukti Transaksi (foto nota/kwitansi)', type: 'bukti' },
@@ -546,15 +548,10 @@ function CrudTab({ col, fields, sort, renderItem, numberFields = [], onItems, on
   useEffect(() => () => discardPending(), []); // tinggalkan tab = batalkan unggahan yang belum disimpan
 
   // Jejak audit (hanya bila audit=true): jejak tambah/ubah/hapus, tidak bisa diubah (lihat firestore.rules)
-  const me = () => getAuthInstance().currentUser?.email || '';
+  const me = () => emailSaya();
   const pick = (o) => (o ? Object.fromEntries(fields.map((f) => [f.name, o[f.name] ?? null])) : null);
-  const tulisLog = async (aksi, docId, sebelum, sesudah) => {
-    if (!audit) return true;
-    try {
-      await addDoc(collection(getDb(), 'audit_log'), { koleksi: col, aksi, docId, sebelum: pick(sebelum), sesudah: pick(sesudah), oleh: me(), waktu: serverTimestamp() });
-      return true;
-    } catch (err) { console.error('Gagal mencatat riwayat:', err); return false; }
-  };
+  // Bila audit aktif, perubahan data dan jejaknya ditulis dalam SATU writeBatch (atomik): tidak ada perubahan tanpa jejak.
+  const logDoc = (aksi, docId, sebelum, sesudah) => isiLog({ koleksi: col, aksi, docId, sebelum: pick(sebelum), sesudah: pick(sesudah) });
 
   const load = useCallback(async () => {
     try {
@@ -590,21 +587,32 @@ function CrudTab({ col, fields, sort, renderItem, numberFields = [], onItems, on
     fields.filter((x) => x.type === 'bukti').forEach((f) => pendingRef.current.delete(data[f.name]));
     try {
       const stamp = { updatedAt: serverTimestamp(), updatedBy: me() };
-      let logOk;
+      const db = getDb();
       if (editId) {
         const old = items.find((x) => x.id === editId);
-        await updateDoc(doc(getDb(), col, editId), { ...data, ...stamp });
+        const ref = doc(db, col, editId);
+        if (audit) {
+          const b = writeBatch(db);
+          b.update(ref, { ...data, ...stamp });
+          b.set(refLog(), logDoc('ubah', editId, old, data));
+          await b.commit();
+        } else await updateDoc(ref, { ...data, ...stamp });
         // hapus file bukti lama yang sudah diganti/dihapus
         for (const f of fields.filter((x) => x.type === 'bukti')) {
           if (old?.[f.name] && old[f.name] !== data[f.name]) await deleteBukti(old[f.name]);
         }
-        logOk = await tulisLog('ubah', editId, old, data);
       } else {
-        const ref = await addDoc(collection(getDb(), col), { ...data, createdAt: serverTimestamp(), createdBy: me(), ...stamp });
-        logOk = await tulisLog('tambah', ref.id, null, data);
+        const ref = doc(collection(db, col));
+        const isi = { ...data, createdAt: serverTimestamp(), createdBy: me(), ...stamp };
+        if (audit) {
+          const b = writeBatch(db);
+          b.set(ref, isi);
+          b.set(refLog(), logDoc('tambah', ref.id, null, data));
+          await b.commit();
+        } else await setDoc(ref, isi);
       }
       clearCache();
-      setMsg(logOk ? 'Tersimpan ✓' : 'Tersimpan ✓ (riwayat perubahan gagal dicatat)');
+      setMsg('Tersimpan ✓');
       reset();
       const list = await load();
       if (list && onSavedRef.current) await onSavedRef.current(list);
@@ -618,9 +626,13 @@ function CrudTab({ col, fields, sort, renderItem, numberFields = [], onItems, on
     if (!confirm('Hapus data ini?')) return;
     try {
       const old = items.find((x) => x.id === id);
-      await deleteDoc(doc(getDb(), col, id));
+      if (audit) {
+        const b = writeBatch(getDb());
+        b.delete(doc(getDb(), col, id));
+        b.set(refLog(), logDoc('hapus', id, old, null));
+        await b.commit();
+      } else await deleteDoc(doc(getDb(), col, id));
       for (const f of fields.filter((x) => x.type === 'bukti')) await deleteBukti(old?.[f.name]);
-      await tulisLog('hapus', id, old, null);
       clearCache();
       const list = await load();
       if (list && onSavedRef.current) await onSavedRef.current(list);
@@ -678,7 +690,9 @@ function AuditList() {
     } catch (e) { setErr('Gagal memuat riwayat: ' + e.message); }
     setBusy(false);
   };
-  const ringkas = (x) => `${x.tipe === 'masuk' ? '+' : '-'}${rupiah(x.jumlah)} · Kas ${x.kategoriUnit} · ${x.tanggal}${x.keterangan ? ` · ${x.keterangan}` : ''}`;
+  const ringkas = (x, koleksi) => (koleksi && koleksi !== 'transactions'
+    ? Object.entries(x).filter(([, v]) => v != null && v !== '').map(([a, v]) => `${a}: ${v}`).join(' · ') || '—'
+    : `${x.tipe === 'masuk' ? '+' : '-'}${rupiah(x.jumlah)} · Kas ${x.kategoriUnit}${x.dana && x.dana !== 'Tidak terikat' ? ` (${x.dana})` : ''} · ${x.tanggal}${x.keterangan ? ` · ${x.keterangan}` : ''}`);
   const waktu = (t) => (t?.seconds ? new Date(t.seconds * 1000).toLocaleString('id-ID') : '');
   return (
     <div className="space-y-3 rounded-2xl bg-white p-4 text-sm shadow-sm">
@@ -694,9 +708,9 @@ function AuditList() {
           <ul className="divide-y">
             {rows.map((r) => (
               <li key={r.id} className="py-2">
-                <p className="font-semibold capitalize">{r.aksi} <span className="font-normal normal-case text-slate-500">· {r.oleh} · {waktu(r.waktu)}</span></p>
-                {r.sebelum && <p className="text-slate-500">Sebelum: {ringkas(r.sebelum)}</p>}
-                {r.sesudah && <p>Sesudah: {ringkas(r.sesudah)}</p>}
+                <p className="font-semibold capitalize">{r.aksi}{r.koleksi && r.koleksi !== 'transactions' ? ` · ${r.koleksi}` : ''} <span className="font-normal normal-case text-slate-500">· {r.oleh} · {waktu(r.waktu)}</span></p>
+                {r.sebelum && <p className="text-slate-500">Sebelum: {ringkas(r.sebelum, r.koleksi)}</p>}
+                {r.sesudah && <p>Sesudah: {ringkas(r.sesudah, r.koleksi)}</p>}
               </li>
             ))}
           </ul>
@@ -730,6 +744,7 @@ function KasTab() {
       </div>
       <CrudTab col="transactions" fields={TRX_FIELDS} sort={byTanggal} numberFields={['jumlah']} onItems={(l) => { setTrx(l); setListed(true); }} onSaved={sync} audit
         validate={(f) => validasiKas(f, inst)}
+        siapkan={(d) => ({ lembagaId: idLembaga(d.unitId, inst) })}
         renderItem={(t) => (<><p className={`font-semibold ${t.tipe === 'masuk' ? 'text-emerald-700' : 'text-red-600'}`}>{t.tipe === 'masuk' ? '+' : '-'} {rupiah(t.jumlah)} · Kas {normBidang(t.kategoriUnit)}{t.unitId ? ` · ${t.unitId}` : ''} {t.bukti && <Paperclip size={12} className="ml-1 inline text-slate-400" />}</p><p className="truncate text-slate-500">{t.tanggal} · {t.keterangan}</p></>)} />
       <AuditList />
       <div className="rounded-2xl bg-white p-6 shadow-sm"><LaporanKas trx={trx} namaYayasan={nama} statusHukum={statusHukum} lembaga={inst} /></div>
